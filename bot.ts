@@ -2,14 +2,28 @@ import { Telegraf, Markup } from "telegraf";
 import * as web3 from "@solana/web3.js";
 import * as token from "@solana/spl-token";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import crypto from "crypto";
+import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const { PROXY_HOST, PROXY_PORT, TG_BOT_TOKEN } = process.env;
+const {
+  PROXY_HOST,
+  PROXY_PORT,
+  TG_BOT_TOKEN,
+  MONGO_URI,
+  MONGO_DB_NAME,
+  MONGO_COLLECTION_NAME,
+} = process.env;
 
-if (!PROXY_HOST || !PROXY_PORT || !TG_BOT_TOKEN) {
+if (
+  !PROXY_HOST ||
+  !PROXY_PORT ||
+  !TG_BOT_TOKEN ||
+  !MONGO_URI ||
+  !MONGO_DB_NAME ||
+  !MONGO_COLLECTION_NAME
+) {
   throw new Error("Missing required environment variables");
 }
 
@@ -28,9 +42,6 @@ const connection = new web3.Connection(
 const userAccounts: { [key: string]: web3.Keypair } = {};
 
 const generateSolanaAccount = (userId: string): web3.Keypair => {
-  const hash = crypto.createHash("sha256");
-  hash.update(userId);
-  const seed = hash.digest();
   return web3.Keypair.generate();
 };
 
@@ -49,9 +60,9 @@ bot.start((ctx) => {
 
   const userAddress = userAccount.publicKey.toBase58();
 
-  const username = ctx.from?.username || ctx.from?.first_name || "there";
+  const username = ctx.from?.first_name || ctx.from?.username || "there";
   ctx.replyWithHTML(
-    `<b>Hi, <u>${username}</u>. Welcome to Ziptos on Solana!</b>\n
+    `Hi, <b>${username}</b>. Welcome to Ziptos on Solana!\n
     Your Solana Account:\n<code>${userAddress}</code>`,
     Markup.inlineKeyboard([
       [
