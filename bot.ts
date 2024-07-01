@@ -2,7 +2,7 @@ import { Telegraf, Markup } from "telegraf";
 import * as web3 from "@solana/web3.js";
 import * as token from "@solana/spl-token";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import fs from "fs";
+import crypto from "crypto";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -24,9 +24,13 @@ const connection = new web3.Connection(
   "https://api.devnet.solana.com",
   "confirmed"
 );
+
 const userAccounts: { [key: string]: web3.Keypair } = {};
 
-const generateSolanaAccount = (): web3.Keypair => {
+const generateSolanaAccount = (userId: string): web3.Keypair => {
+  const hash = crypto.createHash("sha256");
+  hash.update(userId);
+  const seed = hash.digest();
   return web3.Keypair.generate();
 };
 
@@ -39,7 +43,7 @@ bot.start((ctx) => {
 
   let userAccount = userAccounts[userId];
   if (!userAccount) {
-    userAccount = generateSolanaAccount();
+    userAccount = generateSolanaAccount(userId);
     userAccounts[userId] = userAccount;
   }
 
@@ -88,5 +92,14 @@ bot
     console.error(`Failed to launch bot: ${error.message}`, error);
   });
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once("SIGINT", () => {
+  // Save user accounts or perform cleanup if needed
+  console.log("Bot stopped");
+  process.exit();
+});
+
+process.once("SIGTERM", () => {
+  // Save user accounts or perform cleanup if needed
+  console.log("Bot stopped");
+  process.exit();
+});
