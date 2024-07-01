@@ -1,6 +1,8 @@
 import { Telegraf, Markup } from "telegraf";
 import * as web3 from "@solana/web3.js";
+import * as token from "@solana/spl-token";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import fs from "fs";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -18,11 +20,35 @@ const bot = new Telegraf(TG_BOT_TOKEN, {
   telegram: { agent },
 });
 
+const connection = new web3.Connection(
+  "https://api.devnet.solana.com",
+  "confirmed"
+);
+const userAccounts: { [key: string]: web3.Keypair } = {};
+
+const generateSolanaAccount = (): web3.Keypair => {
+  return web3.Keypair.generate();
+};
+
 bot.start((ctx) => {
+  const userId = ctx.from?.id.toString();
+  if (!userId) {
+    ctx.reply("Unable to identify user.");
+    return;
+  }
+
+  let userAccount = userAccounts[userId];
+  if (!userAccount) {
+    userAccount = generateSolanaAccount();
+    userAccounts[userId] = userAccount;
+  }
+
+  const userAddress = userAccount.publicKey.toBase58();
+
   const username = ctx.from?.username || ctx.from?.first_name || "there";
   ctx.replyWithHTML(
     `<b>Hi, <u>${username}</u>. Welcome to Ziptos on Solana!</b>\n
-    <i>Please select an option:</i>`,
+    Your Solana Account:\n<code>${userAddress}</code>`,
     Markup.inlineKeyboard([
       [
         Markup.button.callback("🌟 Create Token", "createToken"),
@@ -48,10 +74,6 @@ bot.start((ctx) => {
     ])
   );
 });
-
-// bot.action("createToken", async (ctx) => {
-//   ctx.reply(`You've selected to Create a Token!`);
-// });
 
 bot.on("text", (ctx) => ctx.reply(`You said: ${ctx.message.text}`));
 
