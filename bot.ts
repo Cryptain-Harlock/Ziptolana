@@ -30,9 +30,6 @@ if (
 const proxyUrl = `http://${PROXY_HOST}:${PROXY_PORT}`;
 const agent = new HttpsProxyAgent(proxyUrl);
 // Declare the main bot: ZiptosSol@ziptos_sol_bot
-const bot = new Telegraf(TG_BOT_TOKEN, {
-  telegram: { agent },
-});
 
 const client = new MongoClient(MONGO_URI);
 let userAccountsCollection: any;
@@ -83,6 +80,10 @@ const getOrCreateSolanaAccount = async (
     throw new Error("Failed to get or create Solana account");
   }
 };
+
+const bot = new Telegraf(TG_BOT_TOKEN, {
+  telegram: { agent },
+});
 
 bot.start(async (ctx) => {
   const userId = ctx.from?.id.toString();
