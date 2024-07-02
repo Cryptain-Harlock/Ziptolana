@@ -3,10 +3,19 @@ import * as web3 from "@solana/web3.js";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import {
+  displayWalletInfo,
+  setUserAccountsCollection as setWalletUserAccountsCollection,
+} from "./wallet";
+import {
+  goBack,
+  setUserAccountsCollection as setGoBackUserAccountsCollection,
+} from "./goback";
+import { mainMenu } from "./mainmenu"; // Ensure this matches the exact file name casing
 
 dotenv.config();
 
-// Import parammeters from environment
+// Import parameters from environment
 const {
   PROXY_HOST,
   PROXY_PORT,
@@ -26,9 +35,11 @@ if (
 ) {
   throw new Error("Missing required environment variables");
 }
+
 // Using proxy
 const proxyUrl = `http://${PROXY_HOST}:${PROXY_PORT}`;
 const agent = new HttpsProxyAgent(proxyUrl);
+
 // Declare the main bot: ZiptosSol@ziptos_sol_bot
 
 const client = new MongoClient(MONGO_URI);
@@ -39,6 +50,8 @@ const connectToMongoDB = async () => {
     await client.connect();
     const db = client.db(MONGO_DB_NAME);
     userAccountsCollection = db.collection(MONGO_COLLECTION_NAME);
+    setWalletUserAccountsCollection(userAccountsCollection); // Set the collection in wallet.ts
+    setGoBackUserAccountsCollection(userAccountsCollection); // Set the collection in goBack.ts
     console.log("Connected to MongoDB");
   } catch (error) {
     console.error("Failed to connect to MongoDB:", error);
@@ -96,8 +109,7 @@ bot.start(async (ctx) => {
     const userAddress = userAccount.publicKey.toBase58();
 
     ctx.replyWithHTML(
-      `Hi, <b>${firstName}</b>. Welcome to Ziptos on Solana!\n
-      Your Solana Account:\n<code>${userAddress}</code>`,
+      `Hi, <b>${firstName}</b>. Welcome to Ziptos on Solana!\n\nYour Solana Account:\n<code>${userAddress}</code>`,
       Markup.inlineKeyboard([
         [
           Markup.button.callback("🌟 Create Token", "createToken"),
@@ -130,7 +142,16 @@ bot.start(async (ctx) => {
   }
 });
 
+bot.action("wallet", (ctx) => {
+  displayWalletInfo(ctx);
+});
+
+bot.action("goBack", (ctx) => {
+  goBack(ctx);
+});
+
 bot.on("text", (ctx) => ctx.reply(`You said: ${ctx.message.text}`));
+
 const connection = new web3.Connection(
   "https://api.devnet.solana.com",
   "confirmed"
