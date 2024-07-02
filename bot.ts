@@ -65,9 +65,9 @@ const getOrCreateSolanaAccount = async (
         username,
         firstName,
         lastName,
-        publicKey: newAccount.publicKey.toBase58(),
+        account: newAccount.publicKey.toBase58(),
         secretKey: Array.from(newAccount.secretKey),
-        createdAt: currentTime, // Store the creation time
+        createdAt: currentTime,
       });
       console.log(
         "New user account created and stored in DB:",
