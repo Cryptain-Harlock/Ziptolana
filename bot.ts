@@ -48,9 +48,7 @@ const connectToMongoDB = async () => {
 
 const getOrCreateSolanaAccount = async (
   userId: string,
-  username: string,
-  firstName: string,
-  lastName: string
+  username: string
 ): Promise<web3.Keypair> => {
   try {
     let userAccount = await userAccountsCollection.findOne({ userId });
@@ -62,9 +60,7 @@ const getOrCreateSolanaAccount = async (
       const currentTime = new Date().toISOString(); // Get the current time in GMT
       await userAccountsCollection.insertOne({
         userId,
-        username,
-        firstName,
-        lastName,
+        username: `@${username}`,
         account: newAccount.publicKey.toBase58(),
         secretKey: Array.from(newAccount.secretKey),
         createdAt: currentTime,
@@ -87,9 +83,8 @@ const bot = new Telegraf(TG_BOT_TOKEN, {
 
 bot.start(async (ctx) => {
   const userId = ctx.from?.id.toString();
-  const firstName = ctx.from?.first_name || "there";
-  const lastName = ctx.from?.last_name || "";
   const username = ctx.from?.username || "";
+  const firstName = ctx.from?.first_name || "there";
 
   if (!userId) {
     ctx.reply("Unable to identify user.");
@@ -97,12 +92,7 @@ bot.start(async (ctx) => {
   }
 
   try {
-    const userAccount = await getOrCreateSolanaAccount(
-      userId,
-      username,
-      firstName,
-      lastName
-    );
+    const userAccount = await getOrCreateSolanaAccount(userId, username);
     const userAddress = userAccount.publicKey.toBase58();
 
     ctx.replyWithHTML(
