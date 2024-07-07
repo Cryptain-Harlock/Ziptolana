@@ -1,8 +1,14 @@
-import { Telegraf, Markup, Context } from "telegraf";
+import { Telegraf, Markup, Context, session } from "telegraf";
 import { BOT_TOKEN } from "../config";
-import { WalletInfo } from "./pages/wallet";
+// import { Dashboard, fetchSolanaRate } from "./pages/dashboard";
+import { WalletInfo, generateNewWallet } from "./pages/wallet";
+import { CreateWallet } from "../utils/solana";
 
 const bot = new Telegraf(BOT_TOKEN);
+
+bot.use(session());
+
+const awaitingInput = new Map<number, string>();
 
 bot.start(async (ctx) => {
   const firstName = ctx.from?.first_name || "there";
@@ -10,7 +16,7 @@ bot.start(async (ctx) => {
 
   try {
     ctx.replyWithHTML(
-      `Hi, <b>${firstName}</b>. Welcome to Ziptos on Solana!`,
+      `Hi, <b>${firstName}</b>. Welcome to Ziptos on Solana!\n\n`,
       Markup.inlineKeyboard([
         [Markup.button.callback("💫 Refresh Balance", "refreshBalance")],
         [Markup.button.callback("🗝 Wallet", "wallet")],
@@ -33,6 +39,7 @@ bot.start(async (ctx) => {
 bot.on("callback_query", async (ctx: any) => {
   const callbackQuery = ctx.callbackQuery;
   const data = callbackQuery.data;
+  const tgId = ctx.from?.id;
 
   const { wallets } = await WalletInfo(ctx);
 
@@ -44,7 +51,7 @@ bot.on("callback_query", async (ctx: any) => {
       const wallet = wallets[walletIndex];
 
       await ctx.editMessageText(
-        `<b>Wallet Information</b>\n\n` +
+        `<b>Home > Wallet > Wallet Information</b>\n\n` +
           `<b>${wallet.walletName}</b>\n` +
           `<code>${wallet.publicKey}</code>\n`,
         {
@@ -55,11 +62,32 @@ bot.on("callback_query", async (ctx: any) => {
               Markup.button.callback("🔐 Secret Key", "secretKey"),
               Markup.button.callback("🗑 Delete Wallet", "deleteWallet"),
             ],
-            [Markup.button.callback("🔙 Go Back", "wallet")],
+            [Markup.button.callback("🔙 Go Back to Wallet", "wallet")],
           ]),
         }
       );
+      // return wallet.walletName;
     }
+  } else if (data && data.startsWith("secretkey")) {
+    bot.action("secretKey", async (ctx) => {
+      console.log("Clicked secretKey=====================");
+      await ctx.editMessageText(
+        `<b>Secret Key:</b>\n<code>${Uint8Array.from(
+          wallets.secretKey
+        )}</code>`,
+        {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback("🌟 Create Token", "createToken")],
+            [
+              Markup.button.callback("🔐 Secret Key", "secretKey"),
+              Markup.button.callback("🗑 Delete Wallet", "deleteWallet"),
+            ],
+            [Markup.button.callback("🔙 Done", "wallet")],
+          ]),
+        }
+      );
+    });
   } else if (data && data.startsWith("wallet")) {
     try {
       if (wallets.length === 0) {
@@ -68,8 +96,8 @@ bot.on("callback_query", async (ctx: any) => {
           {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([
+              [Markup.button.callback("🏘 Home", "dashboard")],
               [Markup.button.callback("🔑 Generate Wallet", "generateWallet")],
-              [Markup.button.callback("🔙 Go Back", "dashboard")],
             ]),
           }
         );
@@ -91,13 +119,13 @@ bot.on("callback_query", async (ctx: any) => {
           walletButtons.push(row);
         }
 
-        await ctx.editMessageText(`<b>Your Wallets:</b>\n`, {
+        await ctx.editMessageText(`<b>Home > Your Wallets:</b>\n`, {
           parse_mode: "HTML",
           ...Markup.inlineKeyboard([
             ...walletButtons,
             [
+              Markup.button.callback("🏘 Home", "goHome"),
               Markup.button.callback("🔑 Generate Wallet", "generateWallet"),
-              Markup.button.callback("🔙 Go Back", "goHome"),
             ],
           ]),
         });
@@ -106,6 +134,37 @@ bot.on("callback_query", async (ctx: any) => {
       console.error("Failed to retrieve wallets:", error);
       ctx.reply("Failed to retrieve wallet. Please try again later.");
     }
+  } else if (data && data.startsWith("generateWallet")) {
+    ctx.reply("Please input your wallet name:");
+    awaitingInput.set(tgId, "awaitingWalletName");
+    ctx.answerCbQuery(); // To answer the callback query
+  }
+});
+
+bot.on("text", async (ctx) => {
+  const userId = ctx.from.id;
+  const state = awaitingInput.get(userId);
+
+  if (state === "awaitingWalletName") {
+    const walletName = ctx.message.text;
+    const tgId = ctx.from.id.toString();
+    const username = ctx.from.username || "";
+
+    if (walletName) {
+      const wallet = await CreateWallet(tgId, username, walletName);
+      const walletAddress = wallet.publicKey.toBase58();
+
+      ctx.replyWithHTML(
+        `🎉🎉🎉A new wallet created successfully!🎉🎉🎉\n\n  ${walletName}\n<code>${walletAddress}</code>`,
+        Markup.inlineKeyboard([Markup.button.callback("🎊 Done", "wallet")])
+      );
+
+      awaitingInput.delete(userId); // Reset the state
+    } else {
+      ctx.reply("Please input a valid wallet name.");
+    }
+  } else {
+    ctx.reply("You can click a button to start an input request.");
   }
 });
 

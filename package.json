@@ -13,6 +13,7 @@
     "@solana/spl-token": "^0.4.7",
     "@solana/web3.js": "^1.94.0",
     "@types/node": "^20.14.9",
+    "axios": "^1.7.2",
     "crypto": "^1.0.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
