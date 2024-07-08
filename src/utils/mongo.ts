@@ -1,4 +1,4 @@
-import { MongoClient } from "mongodb";
+import { MongoClient, Collection } from "mongodb";
 import { URI, DB, COL_WALLETS, COL_TOKENS, COL_LIQUIDITIES } from "../config";
 
 const client = new MongoClient(URI);

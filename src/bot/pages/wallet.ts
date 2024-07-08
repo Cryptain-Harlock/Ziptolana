@@ -36,34 +36,3 @@ export const WalletInfo = async (ctx: any) => {
     };
   }
 };
-
-export const generateNewWallet = async (ctx: any) => {
-  const tgId = ctx.from?.id.toString();
-  const username = ctx.from?.username || "";
-
-  if (ctx.session && ctx.session.awaitingWalletName) {
-    const walletName = ctx.message.text.trim();
-    console.log("input done");
-    try {
-      const wallet = await CreateWallet(tgId, username, walletName);
-      const walletAddress = wallet.publicKey.toBase58();
-
-      delete ctx.session.awaitingWalletName;
-
-      await ctx.reply(
-        `Your wallet created successfully!\n\n${walletName}\n ${walletAddress}`
-      );
-    } catch (error) {
-      console.error("Failed to create wallet:", error);
-      await ctx.reply(
-        "There was an error processing your request. Please try again later."
-      );
-    }
-  } else {
-    if (!ctx.session) {
-      ctx.session = {}; // Initialize session if not already initialized
-    }
-    ctx.session.awaitingWalletName = true;
-    await ctx.reply("Please input your wallet name:");
-  }
-};

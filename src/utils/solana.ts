@@ -27,7 +27,7 @@ export const CreateWallet = async (
         secretKey: Array.from(newWallet.secretKey),
         createdAt: createdTime,
       });
-      console.log("✅ A new wallet created and stored in DB:");
+      console.log("✅ A new wallet created and stored in DB");
       return newWallet;
     }
   } catch (error) {
@@ -35,6 +35,8 @@ export const CreateWallet = async (
     throw new Error("Failed to get or create Wallet");
   }
 };
+
+export const deleteWallet = async (tgId: string, walletName: string) => {};
 
 export const CreateToken = async (
   trId: string,

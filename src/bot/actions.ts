@@ -1,8 +1,9 @@
 import { Telegraf, Markup, Context, session } from "telegraf";
 import { BOT_TOKEN } from "../config";
 // import { Dashboard, fetchSolanaRate } from "./pages/dashboard";
-import { WalletInfo, generateNewWallet } from "./pages/wallet";
+import { WalletInfo } from "./pages/wallet";
 import { CreateWallet } from "../utils/solana";
+import { colWallets } from "../utils/mongo";
 
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -12,7 +13,6 @@ const awaitingInput = new Map<number, string>();
 
 bot.start(async (ctx) => {
   const firstName = ctx.from?.first_name || "there";
-  const userame = ctx.from?.username || "";
 
   try {
     ctx.replyWithHTML(
@@ -59,35 +59,69 @@ bot.on("callback_query", async (ctx: any) => {
           ...Markup.inlineKeyboard([
             [Markup.button.callback("🌟 Create Token", "createToken")],
             [
-              Markup.button.callback("🔐 Secret Key", "secretKey"),
-              Markup.button.callback("🗑 Delete Wallet", "deleteWallet"),
+              Markup.button.callback(
+                "🔐 Secret Key",
+                `secretKey_${wallet.publicKey}`
+              ),
+              Markup.button.callback(
+                "🗑 Delete Wallet",
+                `deleteWallet_${wallet.publicKey}`
+              ),
             ],
             [Markup.button.callback("🔙 Go Back to Wallet", "wallet")],
           ]),
         }
       );
-      // return wallet.walletName;
     }
-  } else if (data && data.startsWith("secretkey")) {
-    bot.action("secretKey", async (ctx) => {
-      console.log("Clicked secretKey=====================");
+  }
+  // Show Secret Key -----------------
+  else if (data && data.startsWith("secretKey")) {
+    const publicKeyInString = data.split("secretKey_")[1];
+    const walletForPub = await colWallets.findOne({
+      publicKey: publicKeyInString,
+    });
+
+    const secretKey = Uint8Array.from(walletForPub.secretKey);
+    await ctx.editMessageText(`<b>Secret Key:</b>\n<code>${secretKey}</code>`, {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([[Markup.button.callback("👌 Done", "wallet")]]),
+    });
+  }
+  // Delete wallet --------------------
+  else if (data && data.startsWith("deleteWallet")) {
+    const delWalletPubKey = data.split("deleteWallet_")[1];
+    const walletToDelete = await colWallets.findOne({
+      publicKey: delWalletPubKey,
+    });
+
+    await ctx.editMessageText(
+      `Are you sure you want to delete the wallet <b>${walletToDelete.walletName}</b>?`,
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          Markup.button.callback("✅ Yes", `confirmDelete_${delWalletPubKey}`),
+          Markup.button.callback("❌ No", "wallet"),
+        ]),
+      }
+    );
+  } else if (data && data.startsWith("confirmDelete_")) {
+    const delWalletPubKey = data.split("confirmDelete_")[1];
+    const walletToDelete = await colWallets.findOne({
+      publicKey: delWalletPubKey,
+    });
+
+    if (walletToDelete) {
+      await colWallets.deleteOne({ publicKey: delWalletPubKey });
       await ctx.editMessageText(
-        `<b>Secret Key:</b>\n<code>${Uint8Array.from(
-          wallets.secretKey
-        )}</code>`,
+        `<b>${walletToDelete.walletName}</b> wallet has been deleted!`,
         {
           parse_mode: "HTML",
           ...Markup.inlineKeyboard([
-            [Markup.button.callback("🌟 Create Token", "createToken")],
-            [
-              Markup.button.callback("🔐 Secret Key", "secretKey"),
-              Markup.button.callback("🗑 Delete Wallet", "deleteWallet"),
-            ],
-            [Markup.button.callback("🔙 Done", "wallet")],
+            [Markup.button.callback("👌 Done", "wallet")],
           ]),
         }
       );
-    });
+    }
   } else if (data && data.startsWith("wallet")) {
     try {
       if (wallets.length === 0) {
@@ -146,11 +180,17 @@ bot.on("text", async (ctx) => {
   const state = awaitingInput.get(userId);
 
   if (state === "awaitingWalletName") {
-    const walletName = ctx.message.text;
+    const walletName = ctx.message.text.toString();
     const tgId = ctx.from.id.toString();
     const username = ctx.from.username || "";
+    const existWalletName = await colWallets.findOne(walletName).toString();
+    console.log(existWalletName + "-----------------------");
 
-    if (walletName) {
+    if (walletName === existWalletName) {
+      ctx.reply(
+        "Warning! You have already a wallet with the same name. Please input another wallet name."
+      );
+    } else {
       const wallet = await CreateWallet(tgId, username, walletName);
       const walletAddress = wallet.publicKey.toBase58();
 
@@ -160,11 +200,7 @@ bot.on("text", async (ctx) => {
       );
 
       awaitingInput.delete(userId); // Reset the state
-    } else {
-      ctx.reply("Please input a valid wallet name.");
     }
-  } else {
-    ctx.reply("You can click a button to start an input request.");
   }
 });
 
