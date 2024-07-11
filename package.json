@@ -10,6 +10,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@metaplex-foundation/mpl-token-metadata": "^2.13.0",
+    "@solana-developers/helpers": "^2.3.0",
     "@solana/spl-token": "^0.4.7",
     "@solana/web3.js": "^1.94.0",
     "@types/node": "^20.14.9",
@@ -17,10 +19,13 @@
     "crypto": "^1.0.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "fs": "^0.0.1-security",
     "https-proxy-agent": "^7.0.5",
     "mongodb": "^6.8.0",
+    "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.66.0",
     "path": "^0.12.7",
+    "sharp": "^0.33.4",
     "telegraf": "^4.16.3",
     "typescript": "^5.5.3"
   },
