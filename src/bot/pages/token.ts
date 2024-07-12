@@ -14,9 +14,22 @@ export const TokenInfo = async (ctx: any) => {
     }
 
     const tokenList = tokenListItems.map(
-      (tokens: { tokenName: string; publicKey: string }) => ({
+      (tokens: {
+        tokenName: string;
+        symbol: string;
+        decimals: number;
+        totalSupply: number;
+        tokenDescription: string;
+        logoUrl: string;
+        mintAddress: string;
+      }) => ({
         tokenName: tokens.tokenName,
-        publicKey: tokens.publicKey,
+        tokenSymbol: tokens.symbol,
+        tokenDecimals: tokens.decimals,
+        tokenTotalSupply: tokens.totalSupply,
+        tokenDescription: tokens.tokenDescription,
+        // tokenLogoUrl = tokens.logoUrl,
+        // tokenMintAddress = tokens.mintAddress,
       })
     );
 
@@ -116,6 +129,15 @@ export const ShowTokenInfo = async (ctx: any, tokenIndex: number) => {
 const awaitingInput = new Map<number, number>();
 const tokenDetails = new Map<number, any>();
 
+const isValidNameOrSymbol = (input: string) =>
+  /^[A-Za-z][A-Za-z0-9]*$/.test(input);
+const isValidSymbol = (input: string) =>
+  /^[A-Za-z][A-Za-z0-9]*$/.test(input) && input.length < 5;
+const isValidDecimals = (input: string) =>
+  /^\d$/.test(input) && parseInt(input, 10) < 10;
+const isValidTotalSupply = (input: string) => /^[1-9]\d*$/.test(input);
+// const isValidImage = (input: string) =>
+
 export const CreateTokenBoard = async (ctx: any) => {
   const tgId = ctx.from.id;
   const steps = [
@@ -140,15 +162,59 @@ export const CreateTokenBoard = async (ctx: any) => {
     if (currentStep < 5) {
       switch (currentStep) {
         case 1:
+          if (!isValidNameOrSymbol(input.toString())) {
+            await ctx.reply(
+              "Token name should not start with a number or special character. Please try again."
+            );
+            return;
+          }
           tokenData.name = input.toString();
           break;
         case 2:
-          tokenData.symbol = input.toString();
+          if (!isValidSymbol(input.toString())) {
+            await ctx.reply(
+              "Token symbol should not contain any special characters and be less than 5 characters. Please try again."
+            );
+            return;
+          }
+          tokenData.symbol = input.toString().toUpperCase();
           break;
         case 3:
+          await ctx.reply(
+            Markup.keyboard([
+              ["7", "8", "9"],
+              ["4", "5", "6"],
+              ["1", "2", "3"],
+              ["0"],
+            ])
+              .oneTime()
+              .resize()
+          );
+          if (!isValidDecimals(input.toString())) {
+            await ctx.reply(
+              "Invalid number for decimals. Please enter a valid number less than 10."
+            );
+            return;
+          }
           tokenData.decimals = parseInt(input, 10);
           break;
         case 4:
+          await ctx.reply(
+            Markup.keyboard([
+              ["7", "8", "9"],
+              ["4", "5", "6"],
+              ["1", "2", "3"],
+              ["0"],
+            ])
+              .oneTime()
+              .resize()
+          );
+          if (!isValidDecimals(input.toString())) {
+            await ctx.reply(
+              "Invalid number for total supply. Please enter a valid number that does not start with 0."
+            );
+            return;
+          }
           tokenData.totalSupply = parseInt(input, 10);
           break;
         default:
@@ -188,7 +254,7 @@ export const CreateTokenBoard = async (ctx: any) => {
         await ctx.replyWithHTML(
           `🎉🎉🎉 Token created successfully!🎉🎉🎉\n` +
             `Token address: <code>${newToken.address}</code>\n\n` +
-            `<code>Link: ${newToken.tokenMintLink}</code>`,
+            `Link: <code>${newToken.tokenMintLink}</code>`,
           {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([

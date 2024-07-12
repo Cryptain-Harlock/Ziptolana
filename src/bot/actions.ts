@@ -5,7 +5,8 @@ import { BOT_TOKEN } from "../config";
 
 import Dashboard from "./pages/dashboard";
 import { ShowWalletInfo, ShowSecretKey } from "./pages/wallet";
-import { ShowTokens, CreateTokenBoard } from "./pages/token";
+import { ShowTokens, ShowTokenInfo, CreateTokenBoard } from "./pages/token";
+// import { ShowLiquidityOptions, CreateLiquidityBoard } from "./pages/liquidity";
 
 const bot = new Telegraf(BOT_TOKEN);
 const awaitingInput = new Map<number, number>();
@@ -74,9 +75,14 @@ bot.on("callback_query", async (ctx: any) => {
     tokenDetails.set(ctx.from.id, {});
     await CreateTokenBoard(ctx);
   } else if (data && data.startsWith("token_")) {
-    // Handle token-specific actions
+    // const parts = data.split("_");
+    // const tokenIndex = parseInt(parts[1]);
+    // await ShowTokenInfo(ctx, tokenIndex);
   } else if (data && data.startsWith("delToken_")) {
     // Handle token deletion
+  } else if (data && data.startsWith("createLiquidity")) {
+    // await ShowLiquidityOptions(ctx);
+  } else if (data && data.startsWith("create")) {
   }
 });
 

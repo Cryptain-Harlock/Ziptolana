@@ -1,9 +1,9 @@
 import * as web3 from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
 import * as helpers from "@solana-developers/helpers";
+import * as meta from "@metaplex-foundation/mpl-token-metadata";
 import fetch from "node-fetch";
 import sharp from "sharp";
-import * as meta from "@metaplex-foundation/mpl-token-metadata";
 import { colWallets, colTokens, colLiquidities } from "./mongo";
 
 const connection = new web3.Connection(
