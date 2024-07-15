@@ -2,13 +2,16 @@ import * as web3 from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
 import * as helpers from "@solana-developers/helpers";
 import * as meta from "@metaplex-foundation/mpl-token-metadata";
-import fetch from "node-fetch";
-import sharp from "sharp";
 import { colWallets, colTokens, colLiquidities } from "./mongo";
+import { resizeImageAndStoreInPinata } from "./upload";
 
 const connection = new web3.Connection(
   "https://api.devnet.solana.com",
   "confirmed"
+);
+
+const TOKEN_METADATA_PROGRAM_ID = new web3.PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 );
 
 export const getOrCreateWallet = async (
@@ -47,25 +50,11 @@ export const getWalletBalance = async (
 ): Promise<number> => {
   try {
     const balance = await connection.getBalance(publicKey);
-    return balance / web3.LAMPORTS_PER_SOL; // Return balance in SOL
+    return balance / web3.LAMPORTS_PER_SOL;
   } catch (error) {
     console.error("Error in getWalletBalance:", error);
     throw new Error("Failed to get wallet balance");
   }
-};
-
-const resizeImageAndStoreInMongoDB = async (
-  ctx: any,
-  fileId: string
-): Promise<{ url: string; base64Image: string }> => {
-  const fileLink = await ctx.telegram.getFileLink(fileId);
-  const response = await fetch(fileLink.href);
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const resizedBuffer = await sharp(buffer).resize(256, 256).jpeg().toBuffer();
-  const base64Image = resizedBuffer.toString("base64");
-  const url = `data:image/jpeg;base64,${base64Image}`;
-  return { url, base64Image };
 };
 
 export const CreateToken = async (
@@ -79,10 +68,7 @@ export const CreateToken = async (
   fileId: string
 ) => {
   try {
-    const { url, base64Image } = await resizeImageAndStoreInMongoDB(
-      ctx,
-      fileId
-    );
+    const url = await resizeImageAndStoreInPinata(ctx, fileId);
 
     let userAccount = await colWallets.findOne({ tgId });
     if (!userAccount) {
@@ -93,9 +79,8 @@ export const CreateToken = async (
       Uint8Array.from(userAccount.secretKey)
     );
 
-    // Check wallet balance
     const balance = await connection.getBalance(payer.publicKey);
-    const minBalance = 0.5 * web3.LAMPORTS_PER_SOL; // 0.5 SOL in lamports
+    const minBalance = 0.5 * web3.LAMPORTS_PER_SOL;
     if (balance < minBalance) {
       await ctx.reply(
         `⚠️ Minimum balance of SOL to deploy token is 0.5. Please charge your wallet and try again.\nYour wallet: ${
@@ -134,8 +119,7 @@ export const CreateToken = async (
       totalSupply
     );
 
-    // Store the token details in the database
-    const tokenCreatedTime = new Date().toISOString(); // Get the current time in GMT
+    const tokenCreatedTime = new Date().toISOString();
     await colTokens.insertOne({
       tgId,
       tokenName,
@@ -145,18 +129,13 @@ export const CreateToken = async (
       tokenDescription,
       mintAddress: mint.toBase58(),
       logoUrl: url,
-      logoImage: base64Image,
       createdAt: tokenCreatedTime,
     });
-
-    const TOKEN_METADATA_PROGRAM_ID = new web3.PublicKey(
-      "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-    );
 
     const metadataData = {
       name: tokenName,
       symbol,
-      uri: "https://arweave.net/1234",
+      uri: url,
       sellerFeeBasisPoints: 0,
       creators: null,
       collection: null,

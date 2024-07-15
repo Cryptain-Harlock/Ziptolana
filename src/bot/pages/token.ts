@@ -14,7 +14,7 @@ export const TokenInfo = async (ctx: any) => {
     }
 
     const tokenList = tokenListItems.map(
-      (tokens: {
+      (token: {
         tokenName: string;
         symbol: string;
         decimals: number;
@@ -23,13 +23,13 @@ export const TokenInfo = async (ctx: any) => {
         logoUrl: string;
         mintAddress: string;
       }) => ({
-        tokenName: tokens.tokenName,
-        tokenSymbol: tokens.symbol,
-        tokenDecimals: tokens.decimals,
-        tokenTotalSupply: tokens.totalSupply,
-        tokenDescription: tokens.tokenDescription,
-        // tokenLogoUrl = tokens.logoUrl,
-        // tokenMintAddress = tokens.mintAddress,
+        tokenName: token.tokenName,
+        tokenSymbol: token.symbol,
+        tokenDecimals: token.decimals,
+        tokenTotalSupply: token.totalSupply,
+        tokenDescription: token.tokenDescription,
+        tokenLogoUrl: token.logoUrl,
+        tokenMintAddress: token.mintAddress,
       })
     );
 
@@ -48,7 +48,6 @@ export const TokenInfo = async (ctx: any) => {
 
 export const ShowTokens = async (ctx: any) => {
   const { tokens } = await TokenInfo(ctx);
-
   if (tokens.length === 0) {
     await ctx.editMessageText(
       `<i>🔴 No token found!</i>\n\nPlease create a new token...\n`,
@@ -93,60 +92,71 @@ export const ShowTokens = async (ctx: any) => {
   }
 };
 
-export const ShowTokenInfo = async (ctx: any, tokenIndex: number) => {
+export const ShowTokenInfo = async (ctx: any) => {
+  const callbackData = ctx.callbackQuery.data;
+  const tokenIndex = parseInt(callbackData.split("_")[1]);
+
   const { tokens } = await TokenInfo(ctx);
 
-  if (tokens && tokens[tokenIndex]) {
+  if (tokens.length > tokenIndex) {
     const token = tokens[tokenIndex];
 
     await ctx.editMessageText(
-      `Home > Token > <b>Token Information</b>\n\n` +
-        `<b>${token.tokenName}</b>\n` +
-        `<code>${token.publicKey}</code>\n`,
+      `<b>${token.tokenName} (${token.tokenSymbol})</b>\n\n` +
+        `<b>Decimals:</b> ${token.tokenDecimals}\n` +
+        `<b>Total Supply:</b> ${token.tokenTotalSupply}\n` +
+        `<b>Description:</b> ${token.tokenDescription}\n` +
+        `<b>Mint Address:</b> ${token.tokenMintAddress}\n\n` +
+        `${token.tokenLogoUrl}\n`,
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
-          [Markup.button.callback("🌟 Create Token", "createToken")],
           [
             Markup.button.callback(
-              "🔐 Secret Key",
-              `secretKey_${token.publicKey}`
+              "💧 Add Liquidity",
+              `addLiquidity_${tokenIndex}`
             ),
-            Markup.button.callback(
-              "🗑 Delete Token",
-              `delToken_${token.publicKey}`
-            ),
+            Markup.button.callback("🔥 Burn Token", `burnToken_${tokenIndex}`),
           ],
-          [Markup.button.callback("🔙 Go Back to Token", "token")],
+          [Markup.button.callback("🔙 Back", "tokens")],
         ]),
       }
     );
   } else {
-    await ctx.reply("Token not found.");
+    await ctx.editMessageText("Token not found.", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🏘 Home", "dashboard"),
+          Markup.button.callback("🌟 Create Token", "createToken"),
+        ],
+      ]),
+    });
   }
 };
 
-const awaitingInput = new Map<number, number>();
-const tokenDetails = new Map<number, any>();
+const awaitingInput = new Map();
+const tokenDetails = new Map();
 
 const isValidNameOrSymbol = (input: string) =>
-  /^[A-Za-z][A-Za-z0-9]*$/.test(input);
+  /^[A-Za-z][A-Za-z0-9 ]*$/.test(input);
 const isValidSymbol = (input: string) =>
   /^[A-Za-z][A-Za-z0-9]*$/.test(input) && input.length < 5;
 const isValidDecimals = (input: string) =>
   /^\d$/.test(input) && parseInt(input, 10) < 10;
-const isValidTotalSupply = (input: string) => /^[1-9]\d*$/.test(input);
+const isValidTotalSupply = (input: string) =>
+  /^\d+$/.test(input) && parseInt(input, 10) > 0;
 // const isValidImage = (input: string) =>
 
 export const CreateTokenBoard = async (ctx: any) => {
   const tgId = ctx.from.id;
   const steps = [
-    "Token Name..",
-    "Token Symbol..",
-    "Token Decimals as number..",
-    "Total Supply as number..",
-    "Token Description..",
-    "Upload token logo image:",
+    "1. Token Name:",
+    "2. Token Symbol:",
+    "3. Token Decimals as a number:",
+    "4. Total Supply as a number:",
+    "5. Token Description:",
+    "6. Upload token logo image:",
   ];
 
   let currentStep = awaitingInput.get(tgId) || 0;
@@ -159,12 +169,12 @@ export const CreateTokenBoard = async (ctx: any) => {
   } else {
     const input = ctx.message.text || ctx.message.photo;
 
-    if (currentStep < 5) {
+    if (currentStep < 6) {
       switch (currentStep) {
         case 1:
           if (!isValidNameOrSymbol(input.toString())) {
             await ctx.reply(
-              "Token name should not start with a number or special character. Please try again."
+              "🟡 Token name should not start with a number or special character. Please try again."
             );
             return;
           }
@@ -173,61 +183,42 @@ export const CreateTokenBoard = async (ctx: any) => {
         case 2:
           if (!isValidSymbol(input.toString())) {
             await ctx.reply(
-              "Token symbol should not contain any special characters and be less than 5 characters. Please try again."
+              "🟡 Token symbol should not contain any special characters and be less than 5 characters. Please try again."
             );
             return;
           }
           tokenData.symbol = input.toString().toUpperCase();
           break;
         case 3:
-          await ctx.reply(
-            Markup.keyboard([
-              ["7", "8", "9"],
-              ["4", "5", "6"],
-              ["1", "2", "3"],
-              ["0"],
-            ])
-              .oneTime()
-              .resize()
-          );
           if (!isValidDecimals(input.toString())) {
             await ctx.reply(
-              "Invalid number for decimals. Please enter a valid number less than 10."
+              "🟡 Invalid number for decimals. Please enter a valid number less than 10."
             );
             return;
           }
           tokenData.decimals = parseInt(input, 10);
           break;
         case 4:
-          await ctx.reply(
-            Markup.keyboard([
-              ["7", "8", "9"],
-              ["4", "5", "6"],
-              ["1", "2", "3"],
-              ["0"],
-            ])
-              .oneTime()
-              .resize()
-          );
-          if (!isValidDecimals(input.toString())) {
+          if (!isValidTotalSupply(input.toString())) {
             await ctx.reply(
-              "Invalid number for total supply. Please enter a valid number that does not start with 0."
+              "🟡 Invalid number for total supply. Please enter a valid number that does not start with 0."
             );
             return;
           }
           tokenData.totalSupply = parseInt(input, 10);
+          break;
+        case 5:
+          tokenData.description = input.toString();
           break;
         default:
           break;
       }
       await ctx.reply(steps[currentStep]);
       awaitingInput.set(tgId, currentStep + 1);
-    } else if (currentStep === 5) {
-      tokenData.description = input.toString();
-      await ctx.reply(steps[currentStep]);
-      awaitingInput.set(tgId, currentStep + 1);
     } else if (currentStep === 6 && ctx.message.photo) {
-      await ctx.reply("Please wait, your token metadata is being processed...");
+      await ctx.reply(
+        "⌛️ Please wait, your token metadata is being processed..."
+      );
 
       try {
         const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
@@ -254,11 +245,11 @@ export const CreateTokenBoard = async (ctx: any) => {
         await ctx.replyWithHTML(
           `🎉🎉🎉 Token created successfully!🎉🎉🎉\n` +
             `Token address: <code>${newToken.address}</code>\n\n` +
-            `Link: <code>${newToken.tokenMintLink}</code>`,
+            `Link: <a>${newToken.tokenMintLink}</a>`,
           {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([
-              [Markup.button.callback("🔙 Go Back to Token", "token")],
+              [Markup.button.callback("🔙 Go Back to Token", "tokens")],
             ]),
           }
         );

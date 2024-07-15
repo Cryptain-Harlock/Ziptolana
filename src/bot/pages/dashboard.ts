@@ -8,8 +8,8 @@ const Dashboard = async (ctx: any, firstName: string, userAccount: string) => {
       ...Markup.inlineKeyboard([
         [Markup.button.callback("💫 Refresh Balance", "refreshBalance")],
         [Markup.button.callback("🗝 Wallet", "wallet")],
-        [Markup.button.callback("💰 Token", "token")],
-        [Markup.button.callback("💎 Liquidity", "liquidity")],
+        [Markup.button.callback("💰 Token", "tokens")],
+        [Markup.button.callback("💎 Liquidity", "liquidities")],
         [
           Markup.button.callback("❔ FAQ", "faq"),
           Markup.button.callback("💬 Support", "support"),

@@ -1,11 +1,16 @@
 import { Telegraf, Markup } from "telegraf";
 import { getOrCreateWallet } from "../utils/solana";
 import { colWallets } from "../utils/mongo";
-import { BOT_TOKEN } from "../config";
+import { BOT_TOKEN, BOT_LOGO } from "../config";
 
 import Dashboard from "./pages/dashboard";
 import { ShowWalletInfo, ShowSecretKey } from "./pages/wallet";
-import { ShowTokens, ShowTokenInfo, CreateTokenBoard } from "./pages/token";
+import {
+  TokenInfo,
+  ShowTokens,
+  ShowTokenInfo,
+  CreateTokenBoard,
+} from "./pages/token";
 // import { ShowLiquidityOptions, CreateLiquidityBoard } from "./pages/liquidity";
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -26,8 +31,8 @@ bot.start(async (ctx) => {
       Markup.inlineKeyboard([
         [Markup.button.callback("💫 Refresh Balance", "dashboard")],
         [Markup.button.callback("🗝 Wallet", "wallet")],
-        [Markup.button.callback("💰 Token", "token")],
-        [Markup.button.callback("💎 Liquidity", "liquidity")],
+        [Markup.button.callback("💰 Token", "tokens")],
+        [Markup.button.callback("💎 Liquidity", "liquidities")],
         [
           Markup.button.callback("❔ FAQ", "faq"),
           Markup.button.callback("💬 Support", "support"),
@@ -68,17 +73,15 @@ bot.on("callback_query", async (ctx: any) => {
     await ShowWalletInfo(ctx);
   } else if (data && data.startsWith("secretKey")) {
     await ShowSecretKey(ctx);
-  } else if (data && data.startsWith("token")) {
+  } else if (data && data.startsWith("tokens")) {
     await ShowTokens(ctx);
+  } else if (data && data.startsWith("token_")) {
+    await ShowTokenInfo(ctx);
   } else if (data && data.startsWith("createToken")) {
     awaitingInput.set(ctx.from.id, 0);
     tokenDetails.set(ctx.from.id, {});
     await CreateTokenBoard(ctx);
-  } else if (data && data.startsWith("token_")) {
-    // const parts = data.split("_");
-    // const tokenIndex = parseInt(parts[1]);
-    // await ShowTokenInfo(ctx, tokenIndex);
-  } else if (data && data.startsWith("delToken_")) {
+  } else if (data && data.startsWith("burnToken_")) {
     // Handle token deletion
   } else if (data && data.startsWith("createLiquidity")) {
     // await ShowLiquidityOptions(ctx);
@@ -97,7 +100,6 @@ bot.on("message", async (ctx: any) => {
   }
 });
 
-// Set bot command menu
 bot.telegram.setMyCommands([
   {
     command: "start",

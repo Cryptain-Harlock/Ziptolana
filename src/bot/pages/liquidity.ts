@@ -1,68 +1,55 @@
-import { colTokens, colLiquidities } from "../../utils/mongo";
-import { CreateLiquidityPool } from "../../utils/solana";
+import { colLiquidities } from "../../utils/mongo";
+import { AddLiquidity } from "../../utils/solana";
 import { Markup } from "telegraf";
 
-export const LiquidityInfo = async (ctx: any) => {
+export const LPInfo = async (ctx: any) => {
   const tgId = ctx.from?.id.toString();
 
   try {
-    const tokenListItems = await colTokens.find({ tgId }).toArray();
-    if (tokenListItems.length === 0) {
+    const lpListItems = await colLiquidities.find({ tgId }).toArray();
+    if (lpListItems.length === 0) {
       return {
-        tokens: [],
+        lps: [],
       };
     }
 
-    const tokenList = tokenListItems.map(
-      (tokens: { tokenName: string; mintAddress: string }) => ({
-        tokenName: tokens.tokenName,
-        mintAddress: tokens.mintAddress,
-      })
-    );
+    const lpList = lpListItems.map((lp: {}) => ({}));
 
     return {
       tgId,
-      tokens: tokenList,
+      lps: lpList,
     };
   } catch (error) {
-    console.error("Failed to list tokens:", error);
+    console.error("Failed to list liquidities:", error);
     return {
-      message: "Failed to retrieve token list. Please try again later.",
+      message: "Failed to retrieve liquidity list. Please try again later.",
       tokens: [],
     };
   }
 };
 
-export const ShowLiquidityOptions = async (ctx: any) => {
-  const { tokens } = await LiquidityInfo(ctx);
-
-  if (tokens.length === 0) {
+export const ShowLPs = async (ctx: any) => {
+  const { lps } = await LPInfo(ctx);
+  if (lps.length === 0) {
     await ctx.editMessageText(
-      `<i>🔴 No token found!</i>\n\nPlease create a new token to provide liquidity...\n`,
+      `<i>🔴 No token found!</i>\n\nPlease create a new token...\n`,
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
           [
             Markup.button.callback("🏘 Home", "dashboard"),
-            Markup.button.callback("🌟 Create Token", "createToken"),
+            Markup.button.callback("🌟 Add Liquidity", "addlp"),
           ],
         ]),
       }
     );
   } else {
     const tokenButtons = [];
-    for (let i = 0; i < tokens.length; i += 2) {
+    for (let i = 0; i < lps.length; i += 2) {
       const row = [];
-      row.push(
-        Markup.button.callback(`💵 ${tokens[i].tokenName}`, `token_${i}`)
-      );
-      if (i + 1 < tokens.length) {
-        row.push(
-          Markup.button.callback(
-            `💵 ${tokens[i + 1].tokenName}`,
-            `token_${i + 1}`
-          )
-        );
+      row.push(Markup.button.callback(`💵 ${lps[i].tokenName}`, `lp_${i}`));
+      if (i + 1 < lps.length) {
+        row.push(Markup.button.callback(`💵 ${lps[i + 1]}`, `token_${i + 1}`));
       }
       tokenButtons.push(row);
     }
@@ -73,75 +60,43 @@ export const ShowLiquidityOptions = async (ctx: any) => {
         ...tokenButtons,
         [
           Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Create Token", "createToken"),
+          Markup.button.callback("🌟 Add Liquidity", "addlp"),
         ],
       ]),
     });
   }
 };
 
-const awaitingInput = new Map<number, number>();
-const liquidityDetails = new Map<number, any>();
+export const ShowLPInfo = async (ctx: any) => {
+  const callbackData = ctx.callbackQuery.data;
+  const lpIndex = parseInt(callbackData.split("_")[1]);
 
-export const CreateLiquidityBoard = async (ctx: any, tokenIndex: number) => {
-  const tgId = ctx.from.id;
-  const steps = [
-    "Enter the amount of your token to provide:",
-    "Enter the amount of SOL to pair with your token:",
-  ];
+  const { lps } = await LPInfo(ctx);
 
-  let currentStep = awaitingInput.get(tgId) || 0;
-  const liquidityData = liquidityDetails.get(tgId) || {};
+  if (lps.length > lpIndex) {
+    const lp = lps[lpIndex];
 
-  if (currentStep === 0) {
-    liquidityDetails.set(tgId, { tokenIndex });
-    await ctx.reply(steps[currentStep]);
-    awaitingInput.set(tgId, currentStep + 1);
+    await ctx.editMessageText(``, {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "🔥 Delete Liquidity ",
+            `deleteLiquidity_${lpIndex}`
+          ),
+          Markup.button.callback("🔙 Back", "liquidities"),
+        ],
+      ]),
+    });
   } else {
-    const input = ctx.message.text;
-
-    if (currentStep === 1) {
-      liquidityData.tokenAmount = parseFloat(input);
-      await ctx.reply(steps[currentStep]);
-      awaitingInput.set(tgId, currentStep + 1);
-    } else if (currentStep === 2) {
-      liquidityData.solAmount = parseFloat(input);
-      const { tokens } = await LiquidityInfo(ctx);
-      const selectedToken = tokens[liquidityData.tokenIndex];
-
-      await ctx.reply("Please wait, your liquidity pool is being created...");
-
-      try {
-        const newLiquidityPool = await CreateLiquidityPool(
-          ctx,
-          tgId.toString(),
-          selectedToken.mintAddress,
-          liquidityData.tokenAmount,
-          liquidityData.solAmount
-        );
-
-        await ctx.replyWithHTML(
-          `🎉🎉🎉 Liquidity pool created successfully!🎉🎉🎉\n` +
-            `Transaction link: <a href="${newLiquidityPool.transactionLink}">${newLiquidityPool.transactionLink}</a>\n\n` +
-            `Liquidity Pool Address: <code>${newLiquidityPool.lpAddress}</code>`,
-          {
-            parse_mode: "HTML",
-            ...Markup.inlineKeyboard([
-              [Markup.button.callback("🔙 Go Back", "dashboard")],
-            ]),
-          }
-        );
-      } catch (error) {
-        console.error("⚠️ Failed to create liquidity pool:", error);
-        await ctx.reply(
-          "There was an error creating the liquidity pool. Please try again later."
-        );
-      } finally {
-        awaitingInput.delete(tgId);
-        liquidityDetails.delete(tgId);
-      }
-    } else {
-      await ctx.reply("Invalid input. Please try again.");
-    }
+    await ctx.editMessageText("Token not found.", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🏘 Home", "dashboard"),
+          Markup.button.callback("🌟 Add Liquidity", "addlp"),
+        ],
+      ]),
+    });
   }
 };
