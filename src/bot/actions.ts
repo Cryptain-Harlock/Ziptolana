@@ -1,6 +1,6 @@
 import { Telegraf, Markup } from "telegraf";
-import { getOrCreateWallet } from "../utils/solana";
-import { colWallets } from "../utils/mongo";
+import { getOrCreateWallet, ToggleMint } from "../utils/solana";
+import { colWallets, colTokens } from "../utils/mongo";
 import { BOT_TOKEN, BOT_LOGO } from "../config";
 
 import Dashboard from "./pages/dashboard";
@@ -81,6 +81,13 @@ bot.on("callback_query", async (ctx: any) => {
     awaitingInput.set(ctx.from.id, 0);
     tokenDetails.set(ctx.from.id, {});
     await CreateTokenBoard(ctx);
+  } else if (data && data.startsWith("toggleMint_")) {
+    const tokenIndex = parseInt(data.split("_")[1]);
+    const tokenListItems = await colTokens.find({ tgId }).toArray();
+    const token = tokenListItems[tokenIndex];
+    const enable = token.mintAuthority ? false : true; // Toggle based on current state
+    await ToggleMint(tgId, tokenIndex, enable);
+    await ShowTokenInfo(ctx);
   } else if (data && data.startsWith("burnToken_")) {
     // Handle token deletion
   } else if (data && data.startsWith("createLiquidity")) {

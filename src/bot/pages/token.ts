@@ -101,16 +101,28 @@ export const ShowTokenInfo = async (ctx: any) => {
   if (tokens.length > tokenIndex) {
     const token = tokens[tokenIndex];
 
+    const mintButtonText = token.mintAuthority
+      ? "🔵 Mint Enabled"
+      : "🔴 Mint Disabled";
+
     await ctx.editMessageText(
-      `<b>${token.tokenName} (${token.tokenSymbol})</b>\n\n` +
-        `<b>Decimals:</b> ${token.tokenDecimals}\n` +
-        `<b>Total Supply:</b> ${token.tokenTotalSupply}\n` +
-        `<b>Description:</b> ${token.tokenDescription}\n` +
-        `<b>Mint Address:</b> ${token.tokenMintAddress}\n\n` +
+      `<b>${token.tokenName} (${token.tokenSymbol})</b>\n` +
+        `<i>(${token.tokenDescription})</i>\n\n` +
+        `<b>Decimals:</b> <code>${token.tokenDecimals}</code>\n` +
+        `<b>Total Supply:</b> <code>${
+          token.tokenTotalSupply / Math.pow(10, token.tokenDecimals)
+        }</code>\n` +
+        `<b>Mint Address:</b> <code>${token.tokenMintAddress}</code>\n\n` +
         `${token.tokenLogoUrl}\n`,
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              `${mintButtonText}`,
+              `toggleMint_${tokenIndex}`
+            ),
+          ],
           [
             Markup.button.callback(
               "💧 Add Liquidity",

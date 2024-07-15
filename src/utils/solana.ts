@@ -2,6 +2,7 @@ import * as web3 from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
 import * as helpers from "@solana-developers/helpers";
 import * as meta from "@metaplex-foundation/mpl-token-metadata";
+import * as raydium from "@raydium-io/raydium-sdk";
 import { colWallets, colTokens, colLiquidities } from "./mongo";
 import { resizeImageAndStoreInPinata } from "./upload";
 
@@ -199,8 +200,6 @@ export const CreateToken = async (
 
     console.log(`✅ Look at the token mint again: ${tokenMintLink}!`);
 
-    console.log("✅ A new token created and stored in DB:", mint.toBase58());
-
     return {
       address: mint.toBase58(),
       tokenAccount: tokenAccount.address.toBase58(),
@@ -209,5 +208,70 @@ export const CreateToken = async (
   } catch (error) {
     console.error("⚠️ Error in CreateToken:", error);
     throw new Error("Failed to create Solana token");
+  }
+};
+
+export const ToggleMint = async (
+  tgId: string,
+  tokenIndex: number,
+  enable: boolean
+) => {
+  try {
+    const userAccount = await colWallets.findOne({ tgId });
+    if (!userAccount) {
+      throw new Error("User account not found");
+    }
+
+    const payer = web3.Keypair.fromSecretKey(
+      Uint8Array.from(userAccount.secretKey)
+    );
+
+    const tokenListItems = await colTokens.find({ tgId }).toArray();
+    if (tokenListItems.length <= tokenIndex) {
+      throw new Error("Token not found");
+    }
+
+    const token = tokenListItems[tokenIndex];
+    const mint = new web3.PublicKey(token.mintAddress);
+
+    const transaction = new web3.Transaction();
+
+    if (enable) {
+      const enableMintInstruction = splToken.createSetAuthorityInstruction(
+        mint,
+        payer.publicKey,
+        splToken.AuthorityType.MintTokens,
+        payer.publicKey
+      );
+      transaction.add(enableMintInstruction);
+    } else {
+      const disableMintInstruction = splToken.createSetAuthorityInstruction(
+        mint,
+        payer.publicKey,
+        splToken.AuthorityType.MintTokens,
+        null
+      );
+      transaction.add(disableMintInstruction);
+    }
+
+    const transactionSignature = await web3.sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [payer]
+    );
+
+    console.log(
+      `✅ Mint ${
+        enable ? "enabled" : "disabled"
+      } successfully, transaction signature: ${transactionSignature}`
+    );
+
+    return {
+      success: true,
+      message: `Mint ${enable ? "enabled" : "disabled"} successfully`,
+    };
+  } catch (error) {
+    console.error("⚠️ Error in toggleMint:", error);
+    throw new Error("Failed to toggle mint status");
   }
 };
