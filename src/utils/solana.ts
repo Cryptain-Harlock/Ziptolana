@@ -22,7 +22,7 @@ export const getOrCreateWallet = async (
   try {
     let userAccount = await colWallets.findOne({ tgId });
     if (userAccount) {
-      console.log("User account found in DB:", userAccount);
+      console.log(`🟣 ${userAccount.username} has started the bot`);
       return web3.Keypair.fromSecretKey(Uint8Array.from(userAccount.secretKey));
     } else {
       const newAccount = web3.Keypair.generate();
@@ -93,7 +93,6 @@ export const CreateToken = async (
       );
     }
 
-    // Create a new token mint
     const mint = await splToken.createMint(
       connection,
       payer,
@@ -102,7 +101,6 @@ export const CreateToken = async (
       decimals
     );
 
-    // Create an associated token account for the payer
     const tokenAccount = await splToken.getOrCreateAssociatedTokenAccount(
       connection,
       payer,
@@ -110,7 +108,6 @@ export const CreateToken = async (
       payer.publicKey
     );
 
-    // Mint the initial supply to the payer's token account
     await splToken.mintTo(
       connection,
       payer,
@@ -204,6 +201,7 @@ export const CreateToken = async (
       address: mint.toBase58(),
       tokenAccount: tokenAccount.address.toBase58(),
       tokenMintLink,
+      transactionLink,
     };
   } catch (error) {
     console.error("⚠️ Error in CreateToken:", error);
@@ -211,67 +209,101 @@ export const CreateToken = async (
   }
 };
 
-export const ToggleMint = async (
-  tgId: string,
-  tokenIndex: number,
-  enable: boolean
-) => {
+export const checkMintStatus = async (mintAddress: string) => {
   try {
-    const userAccount = await colWallets.findOne({ tgId });
-    if (!userAccount) {
-      throw new Error("User account not found");
-    }
+    const mint = new web3.PublicKey(mintAddress);
+    const mintInfo = await splToken.getMint(connection, mint);
+    return mintInfo.mintAuthority !== null ? "🔵" : "🔴";
+  } catch (error) {
+    console.error("Failed to check mint status:", error);
+    return "Unknown";
+  }
+};
 
-    const payer = web3.Keypair.fromSecretKey(
-      Uint8Array.from(userAccount.secretKey)
+export const MintDisable = async (mintAddress: string, payerSecretKey: any) => {
+  const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
+  try {
+    const mint = new web3.PublicKey(mintAddress);
+    const transaction = new web3.Transaction();
+    const mintInfo = await splToken.getMint(connection, mint);
+    console.log(
+      `--------------------------${mint}\n------------------------${mintInfo}`
     );
 
-    const tokenListItems = await colTokens.find({ tgId }).toArray();
-    if (tokenListItems.length <= tokenIndex) {
-      throw new Error("Token not found");
+    if (mintInfo.mintAuthority === null) {
+      throw new Error("Minting is already disabled for this token.");
     }
 
-    const token = tokenListItems[tokenIndex];
-    const mint = new web3.PublicKey(token.mintAddress);
-
-    const transaction = new web3.Transaction();
-
-    if (enable) {
-      const enableMintInstruction = splToken.createSetAuthorityInstruction(
-        mint,
-        payer.publicKey,
-        splToken.AuthorityType.MintTokens,
-        payer.publicKey
-      );
-      transaction.add(enableMintInstruction);
-    } else {
-      const disableMintInstruction = splToken.createSetAuthorityInstruction(
+    const revokeMintAuthorityInstruction =
+      splToken.createSetAuthorityInstruction(
         mint,
         payer.publicKey,
         splToken.AuthorityType.MintTokens,
         null
       );
-      transaction.add(disableMintInstruction);
-    }
+    console.log(`**************************${revokeMintAuthorityInstruction}`);
 
-    const transactionSignature = await web3.sendAndConfirmTransaction(
+    transaction.add(revokeMintAuthorityInstruction);
+
+    const signature = await web3.sendAndConfirmTransaction(
       connection,
       transaction,
-      [payer]
+      [payer],
+      {
+        commitment: "confirmed",
+        preflightCommitment: "confirmed",
+      }
     );
 
-    console.log(
-      `✅ Mint ${
-        enable ? "enabled" : "disabled"
-      } successfully, transaction signature: ${transactionSignature}`
-    );
-
-    return {
-      success: true,
-      message: `Mint ${enable ? "enabled" : "disabled"} successfully`,
-    };
+    return signature;
   } catch (error) {
-    console.error("⚠️ Error in toggleMint:", error);
-    throw new Error("Failed to toggle mint status");
+    console.error("Failed to disable minting:", error);
+    throw error;
   }
 };
+
+export const MintEnable = async (
+  mintAddress: string,
+  payerSecretKey: any,
+  newMintAuthority: string
+) => {
+  const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
+  try {
+    const mint = new web3.PublicKey(mintAddress);
+    const newAuthority = new web3.PublicKey(newMintAuthority);
+    const transaction = new web3.Transaction();
+    const mintInfo = await splToken.getMint(connection, mint);
+    console.log("===================", mintInfo);
+
+    if (mintInfo.mintAuthority && mintInfo.mintAuthority.equals(newAuthority)) {
+      throw new Error(
+        "Minting is already enabled for this token with the provided authority."
+      );
+    }
+
+    const setMintAuthorityInstruction = splToken.createSetAuthorityInstruction(
+      mint,
+      payer.publicKey,
+      splToken.AuthorityType.MintTokens,
+      newAuthority
+    );
+
+    transaction.add(setMintAuthorityInstruction);
+
+    const signature = await web3.sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [payer],
+      {
+        commitment: "confirmed",
+        preflightCommitment: "confirmed",
+      }
+    );
+
+    return signature;
+  } catch (error) {
+    console.error("Failed to enable minting:", error);
+    throw error;
+  }
+};
+export const freezeAuth = async () => {};

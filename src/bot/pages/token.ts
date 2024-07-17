@@ -83,10 +83,16 @@ export const ShowTokens = async (ctx: any) => {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([
         ...tokenButtons,
+        [Markup.button.callback("❄️ Freeze Authority", "freezeAuth")],
         [
-          Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Create Token", "createToken"),
+          Markup.button.callback("🔵 Mint Enable", "mintEnable"),
+          Markup.button.callback("🔴 Mint Disable", "mintDisable"),
         ],
+        [
+          Markup.button.callback("🌟 Create Token", "createToken"),
+          // Markup.button.callback("🔥 Burn Token", "burnToken"),
+        ],
+        [Markup.button.callback("🏘 Home", "dashboard")],
       ]),
     });
   }
@@ -101,10 +107,6 @@ export const ShowTokenInfo = async (ctx: any) => {
   if (tokens.length > tokenIndex) {
     const token = tokens[tokenIndex];
 
-    const mintButtonText = token.mintAuthority
-      ? "🔵 Mint Enabled"
-      : "🔴 Mint Disabled";
-
     await ctx.editMessageText(
       `<b>${token.tokenName} (${token.tokenSymbol})</b>\n` +
         `<i>(${token.tokenDescription})</i>\n\n` +
@@ -117,19 +119,6 @@ export const ShowTokenInfo = async (ctx: any) => {
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback(
-              `${mintButtonText}`,
-              `toggleMint_${tokenIndex}`
-            ),
-          ],
-          [
-            Markup.button.callback(
-              "💧 Add Liquidity",
-              `addLiquidity_${tokenIndex}`
-            ),
-            Markup.button.callback("🔥 Burn Token", `burnToken_${tokenIndex}`),
-          ],
           [Markup.button.callback("🔙 Back", "tokens")],
         ]),
       }
@@ -147,7 +136,7 @@ export const ShowTokenInfo = async (ctx: any) => {
   }
 };
 
-const awaitingInput = new Map();
+const awaitingTokenCreationInput = new Map();
 const tokenDetails = new Map();
 
 const isValidNameOrSymbol = (input: string) =>
@@ -171,13 +160,13 @@ export const CreateTokenBoard = async (ctx: any) => {
     "6. Upload token logo image:",
   ];
 
-  let currentStep = awaitingInput.get(tgId) || 0;
+  let currentStep = awaitingTokenCreationInput.get(tgId) || 0;
   const tokenData = tokenDetails.get(tgId) || {};
 
   if (currentStep === 0) {
     tokenDetails.set(tgId, {});
     await ctx.reply(steps[currentStep]);
-    awaitingInput.set(tgId, currentStep + 1);
+    awaitingTokenCreationInput.set(tgId, currentStep + 1);
   } else {
     const input = ctx.message.text || ctx.message.photo;
 
@@ -226,7 +215,7 @@ export const CreateTokenBoard = async (ctx: any) => {
           break;
       }
       await ctx.reply(steps[currentStep]);
-      awaitingInput.set(tgId, currentStep + 1);
+      awaitingTokenCreationInput.set(tgId, currentStep + 1);
     } else if (currentStep === 6 && ctx.message.photo) {
       await ctx.reply(
         "⌛️ Please wait, your token metadata is being processed..."
@@ -256,7 +245,8 @@ export const CreateTokenBoard = async (ctx: any) => {
 
         await ctx.replyWithHTML(
           `🎉🎉🎉 Token created successfully!🎉🎉🎉\n` +
-            `Token address: <code>${newToken.address}</code>\n\n` +
+            `Token address: <code>${newToken.address}</code> ` +
+            `<a href='${newToken.transactionLink}'>TX</a>\n\n` +
             `Link: <a>${newToken.tokenMintLink}</a>`,
           {
             parse_mode: "HTML",
@@ -271,7 +261,7 @@ export const CreateTokenBoard = async (ctx: any) => {
           "There was an error creating the token. Please try again later."
         );
       } finally {
-        awaitingInput.delete(tgId);
+        awaitingTokenCreationInput.delete(tgId);
         tokenDetails.delete(tgId);
       }
     } else {

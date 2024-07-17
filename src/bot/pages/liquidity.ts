@@ -1,5 +1,5 @@
 import { colLiquidities } from "../../utils/mongo";
-import { AddLiquidity } from "../../utils/solana";
+// import { AddLiquidity } from "../../utils/solana";
 import { Markup } from "telegraf";
 
 export const LPInfo = async (ctx: any) => {
@@ -32,13 +32,13 @@ export const ShowLPs = async (ctx: any) => {
   const { lps } = await LPInfo(ctx);
   if (lps.length === 0) {
     await ctx.editMessageText(
-      `<i>🔴 No token found!</i>\n\nPlease create a new token...\n`,
+      `<i>🔴 No Liquidity Pool found!</i>\n\nPlease create a new LP...\n`,
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
           [
             Markup.button.callback("🏘 Home", "dashboard"),
-            Markup.button.callback("🌟 Add Liquidity", "addlp"),
+            Markup.button.callback("💎 Add Liquidity", "addlp"),
           ],
         ]),
       }
@@ -47,9 +47,9 @@ export const ShowLPs = async (ctx: any) => {
     const tokenButtons = [];
     for (let i = 0; i < lps.length; i += 2) {
       const row = [];
-      row.push(Markup.button.callback(`💵 ${lps[i].tokenName}`, `lp_${i}`));
+      row.push(Markup.button.callback(`💧 ${lps[i].tokenName}`, `lp_${i}`));
       if (i + 1 < lps.length) {
-        row.push(Markup.button.callback(`💵 ${lps[i + 1]}`, `token_${i + 1}`));
+        row.push(Markup.button.callback(`💧 ${lps[i + 1]}`, `token_${i + 1}`));
       }
       tokenButtons.push(row);
     }
@@ -60,7 +60,7 @@ export const ShowLPs = async (ctx: any) => {
         ...tokenButtons,
         [
           Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Add Liquidity", "addlp"),
+          Markup.button.callback("💎 Add Liquidity", "addlp"),
         ],
       ]),
     });
@@ -94,7 +94,7 @@ export const ShowLPInfo = async (ctx: any) => {
       ...Markup.inlineKeyboard([
         [
           Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Add Liquidity", "addlp"),
+          Markup.button.callback("💎 Add Liquidity", "addlp"),
         ],
       ]),
     });
