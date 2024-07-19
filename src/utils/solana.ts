@@ -97,7 +97,7 @@ export const CreateToken = async (
       connection,
       payer,
       payer.publicKey,
-      null,
+      payer.publicKey,
       decimals
     );
 
@@ -118,6 +118,7 @@ export const CreateToken = async (
     );
 
     const tokenCreatedTime = new Date().toISOString();
+    // Insert Metadata of Token to MongoDB
     await colTokens.insertOne({
       tgId,
       tokenName,
@@ -125,6 +126,8 @@ export const CreateToken = async (
       decimals,
       totalSupply,
       tokenDescription,
+      mintAuthority: userAccount.secretKey,
+      freezeAuthority: userAccount.secretKey,
       mintAddress: mint.toBase58(),
       logoUrl: url,
       createdAt: tokenCreatedTime,
@@ -213,9 +216,20 @@ export const checkMintStatus = async (mintAddress: string) => {
   try {
     const mint = new web3.PublicKey(mintAddress);
     const mintInfo = await splToken.getMint(connection, mint);
-    return mintInfo.mintAuthority !== null ? "🔵" : "🔴";
+    return mintInfo.mintAuthority !== null ? true : false;
   } catch (error) {
     console.error("Failed to check mint status:", error);
+    return "Unknown";
+  }
+};
+
+export const checkFreezeAuthStatus = async (mintAddress: string) => {
+  try {
+    const mint = new web3.PublicKey(mintAddress);
+    const mintInfo = await splToken.getMint(connection, mint);
+    return mintInfo.freezeAuthority !== null ? true : false;
+  } catch (error) {
+    console.error("Failed to check freeze authority status:", error);
     return "Unknown";
   }
 };
@@ -226,9 +240,6 @@ export const MintDisable = async (mintAddress: string, payerSecretKey: any) => {
     const mint = new web3.PublicKey(mintAddress);
     const transaction = new web3.Transaction();
     const mintInfo = await splToken.getMint(connection, mint);
-    console.log(
-      `--------------------------${mint}\n------------------------${mintInfo}`
-    );
 
     if (mintInfo.mintAuthority === null) {
       throw new Error("Minting is already disabled for this token.");
@@ -241,7 +252,6 @@ export const MintDisable = async (mintAddress: string, payerSecretKey: any) => {
         splToken.AuthorityType.MintTokens,
         null
       );
-    console.log(`**************************${revokeMintAuthorityInstruction}`);
 
     transaction.add(revokeMintAuthorityInstruction);
 
@@ -262,33 +272,29 @@ export const MintDisable = async (mintAddress: string, payerSecretKey: any) => {
   }
 };
 
-export const MintEnable = async (
+export const FreezeAuthority = async (
   mintAddress: string,
-  payerSecretKey: any,
-  newMintAuthority: string
+  payerSecretKey: any
 ) => {
   const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
   try {
     const mint = new web3.PublicKey(mintAddress);
-    const newAuthority = new web3.PublicKey(newMintAuthority);
     const transaction = new web3.Transaction();
     const mintInfo = await splToken.getMint(connection, mint);
-    console.log("===================", mintInfo);
 
-    if (mintInfo.mintAuthority && mintInfo.mintAuthority.equals(newAuthority)) {
-      throw new Error(
-        "Minting is already enabled for this token with the provided authority."
-      );
+    if (mintInfo.freezeAuthority === null) {
+      throw new Error("Freeze authority is already disabled for this token.");
     }
 
-    const setMintAuthorityInstruction = splToken.createSetAuthorityInstruction(
-      mint,
-      payer.publicKey,
-      splToken.AuthorityType.MintTokens,
-      newAuthority
-    );
+    const revokeFreezeAuthorityInstruction =
+      splToken.createSetAuthorityInstruction(
+        mint,
+        payer.publicKey,
+        splToken.AuthorityType.FreezeAccount,
+        null
+      );
 
-    transaction.add(setMintAuthorityInstruction);
+    transaction.add(revokeFreezeAuthorityInstruction);
 
     const signature = await web3.sendAndConfirmTransaction(
       connection,
@@ -302,8 +308,65 @@ export const MintEnable = async (
 
     return signature;
   } catch (error) {
-    console.error("Failed to enable minting:", error);
+    console.error("Failed to disable freeze authority:", error);
     throw error;
   }
 };
-export const freezeAuth = async () => {};
+
+const SOL_MINT_ADDRESS = new web3.PublicKey(splToken.NATIVE_MINT);
+/*
+const CreateAndAddLP = async (mintAddress: string, payerSecretKey: any) => {
+  const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
+  try {
+    const solTokenAccount = await splToken.getAssociatedTokenAddress(
+      splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+      splToken.TOKEN_PROGRAM_ID,
+      SOL_MINT_ADDRESS,
+      payer
+    );
+    const userTokenAccount = await splToken.getAssociatedTokenAddress(
+      splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+      splToken.TOKEN_PROGRAM_ID,
+      mintAddress,
+      payer
+    );
+
+    const transaction = new web3.Transaction();
+    transaction.add(
+      splToken.createAssociatedTokenAccountInstruction(
+        splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+        splToken.TOKEN_PROGRAM_ID,
+        SOL_MINT_ADDRESS,
+        solTokenAccount,
+        payer.publicKey,
+        payer.publicKey
+      ),
+      splToken.createAssociatedTokenAccountInstruction(
+        splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+        splToken.TOKEN_PROGRAM_ID,
+        SOL_MINT_ADDRESS,
+        solTokenAccount,
+        payer.publicKey,
+        payer.publicKey
+      )
+    );
+    const poolInstruction = raydium.createPoolInstruction(
+      payer.publicKey,
+      solTokenAccount,
+      userTokenAccount,
+      mintAddress,
+      SOL_MINT_ADDRESS
+    );
+    transaction.add(poolInstruction);
+
+    const signature = await connection.sendTransaction(transaction, [payer], {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    });
+    await connection.confirmTransaction(signature, "confirmed");
+    console.log(`Liquidity pool created. Transaction signature: ${signature}`);
+  } catch (error: any) {
+    console.log("Faild to create liquidity pool", error);
+  }
+};
+*/

@@ -1,5 +1,12 @@
-import { colTokens } from "../../utils/mongo";
-import { CreateToken } from "../../utils/solana";
+import { colTokens, colWallets } from "../../utils/mongo";
+import {
+  CreateToken,
+  checkMintStatus,
+  MintDisable,
+  checkFreezeAuthStatus,
+  FreezeAuthority,
+} from "../../utils/solana";
+import { askForConfirmation } from "./confirm";
 import { Markup } from "telegraf";
 
 export const TokenInfo = async (ctx: any) => {
@@ -83,16 +90,10 @@ export const ShowTokens = async (ctx: any) => {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([
         ...tokenButtons,
-        [Markup.button.callback("❄️ Freeze Authority", "freezeAuth")],
         [
-          Markup.button.callback("🔵 Mint Enable", "mintEnable"),
-          Markup.button.callback("🔴 Mint Disable", "mintDisable"),
-        ],
-        [
+          Markup.button.callback("🏘 Home", "dashboard"),
           Markup.button.callback("🌟 Create Token", "createToken"),
-          // Markup.button.callback("🔥 Burn Token", "burnToken"),
         ],
-        [Markup.button.callback("🏘 Home", "dashboard")],
       ]),
     });
   }
@@ -106,9 +107,29 @@ export const ShowTokenInfo = async (ctx: any) => {
 
   if (tokens.length > tokenIndex) {
     const token = tokens[tokenIndex];
+    const mintStatusMark = (await checkMintStatus(token.tokenMintAddress))
+      ? "🔵 Minting is Enable"
+      : "🔴 Mint Disabled";
+    const mintButton = (await checkMintStatus(token.tokenMintAddress))
+      ? Markup.button.callback("🔴 Mint Disable", `mintDisable_${tokenIndex}`)
+      : null;
+    const freezeAuthStatusMark = (await checkFreezeAuthStatus(
+      token.tokenMintAddress
+    ))
+      ? "🔥 Authority is alive"
+      : "❄️ Authority is frozen";
+    const freezeAuthButton = (await checkFreezeAuthStatus(
+      token.tokenMintAddress
+    ))
+      ? Markup.button.callback(
+          "❄️ Freeze Authority",
+          `freezeAuth_${tokenIndex}`
+        )
+      : null;
 
     await ctx.editMessageText(
-      `<b>${token.tokenName} (${token.tokenSymbol})</b>\n` +
+      `${mintStatusMark}    |    ${freezeAuthStatusMark}\n\n` +
+        `<b>${token.tokenName}    |    ${token.tokenSymbol}</b>\n` +
         `<i>(${token.tokenDescription})</i>\n\n` +
         `<b>Decimals:</b> <code>${token.tokenDecimals}</code>\n` +
         `<b>Total Supply:</b> <code>${
@@ -119,6 +140,10 @@ export const ShowTokenInfo = async (ctx: any) => {
       {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
+          [
+            ...(mintButton ? [mintButton] : []),
+            ...(freezeAuthButton ? [freezeAuthButton] : []),
+          ],
           [Markup.button.callback("🔙 Back", "tokens")],
         ]),
       }
@@ -147,7 +172,6 @@ const isValidDecimals = (input: string) =>
   /^\d$/.test(input) && parseInt(input, 10) < 10;
 const isValidTotalSupply = (input: string) =>
   /^\d+$/.test(input) && parseInt(input, 10) > 0;
-// const isValidImage = (input: string) =>
 
 export const CreateTokenBoard = async (ctx: any) => {
   const tgId = ctx.from.id;
@@ -244,9 +268,9 @@ export const CreateTokenBoard = async (ctx: any) => {
         );
 
         await ctx.replyWithHTML(
-          `🎉🎉🎉 Token created successfully!🎉🎉🎉\n` +
-            `Token address: <code>${newToken.address}</code> ` +
-            `<a href='${newToken.transactionLink}'>TX</a>\n\n` +
+          `🎉🎉🎉 Token created successfully!🎉🎉🎉\n\n` +
+            `Token address: <a href='${newToken.transactionLink}'>TX</a>` +
+            `<code>${newToken.address}</code>\n\n` +
             `Link: <a>${newToken.tokenMintLink}</a>`,
           {
             parse_mode: "HTML",
@@ -267,5 +291,83 @@ export const CreateTokenBoard = async (ctx: any) => {
     } else {
       await ctx.reply("Invalid input. Please try again.");
     }
+  }
+};
+
+export const MintDisableBoard = async (ctx: any) => {
+  const callbackData = ctx.callbackQuery.data;
+  const tokenIndex = parseInt(callbackData.split("_")[1]);
+
+  const { tokens } = await TokenInfo(ctx);
+  const token = tokens[tokenIndex];
+
+  await askForConfirmation(ctx, "mintDisable", token.tokenMintAddress);
+};
+
+export const MintDisableConfirmed = async (
+  ctx: any,
+  tokenMintAddress: string
+) => {
+  const tgId = ctx.from.id.toString();
+
+  try {
+    await ctx.reply("⌛️ Disabling minting process initiated...");
+    const userAccount = await colWallets.findOne({ tgId: tgId });
+    const payer = userAccount.secretKey;
+    const signature = await MintDisable(tokenMintAddress, payer);
+
+    await ctx.replyWithHTML(
+      `Token minting disabled successfully for:\n` +
+        `<code>${tokenMintAddress}</code>\n\n` +
+        `Signature<code>${signature}</code>`,
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("🔙 Go Back to Token", "tokens")],
+        ]),
+      }
+    );
+  } catch (error) {
+    console.error("⚠️ Failed to disable minting:", error);
+    await ctx.reply("Failed to disable minting. Please try again later.");
+  }
+};
+
+export const FreezeAuthBoard = async (ctx: any) => {
+  const callbackData = ctx.callbackQuery.data;
+  const tokenIndex = parseInt(callbackData.split("_")[1]);
+
+  const { tokens } = await TokenInfo(ctx);
+  const token = tokens[tokenIndex];
+
+  await askForConfirmation(ctx, "freezeAuth", token.tokenMintAddress);
+};
+
+export const FreezeAuthConfirmed = async (
+  ctx: any,
+  tokenMintAddress: string
+) => {
+  const tgId = ctx.from.id.toString();
+
+  try {
+    await ctx.reply("⌛️ Freezing authority process initiated...");
+    const userAccount = await colWallets.findOne({ tgId: tgId });
+    const payer = userAccount.secretKey;
+    const signature = await FreezeAuthority(tokenMintAddress, payer);
+
+    await ctx.replyWithHTML(
+      `Authority freezed successfully for:\n` +
+        `<code>${tokenMintAddress}</code>\n\n` +
+        `Signature<code>${signature}</code>`,
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("🔙 Go Back to Token", "tokens")],
+        ]),
+      }
+    );
+  } catch (error) {
+    console.error("⚠️ Failed to freeze authority:", error);
+    await ctx.reply("Failed to freeze authority. Please try again later.");
   }
 };

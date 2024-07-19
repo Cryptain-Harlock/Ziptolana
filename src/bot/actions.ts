@@ -6,18 +6,26 @@ import { BOT_TOKEN, BOT_LOGO } from "../config";
 import Dashboard from "./pages/dashboard";
 import { ShowWalletInfo, ShowSecretKey } from "./pages/wallet";
 import {
-  TokenInfo,
   ShowTokens,
   ShowTokenInfo,
   CreateTokenBoard,
+  MintDisableBoard,
+  MintDisableConfirmed,
+  FreezeAuthBoard,
+  FreezeAuthConfirmed,
 } from "./pages/token";
-import { MintEnableBoard, MintDisableBoard } from "./pages/mintToken";
 import { LPInfo, ShowLPs, ShowLPInfo } from "./pages/liquidity";
 
+import { HttpsProxyAgent } from "https-proxy-agent";
+
+const PROXY_URL = "http://192.168.6.198:808";
+const agent = new HttpsProxyAgent(PROXY_URL);
+
+// const bot = new Telegraf(BOT_TOKEN, { telegram: { agent } });
 const bot = new Telegraf(BOT_TOKEN);
+
 const awaitingTokenCreationInput = new Map();
 const awaitingDisableMintingInput = new Map();
-const awaitingEnableMintingInput = new Map();
 const tokenDetails = new Map();
 
 bot.start(async (ctx) => {
@@ -75,8 +83,9 @@ bot.on("callback_query", async (ctx: any) => {
   const firstName = ctx.from?.first_name || "there";
   const account = await colWallets.findOne({ tgId });
   const userAccount = account?.account || "";
-  const callbackQuery = ctx.callbackQuery;
-  const data = callbackQuery.data;
+
+  const data = ctx.callbackQuery.data;
+  const [action, actionName, confirmedData] = ctx.callbackQuery.data.split("_");
 
   if (data && data.startsWith("dashboard")) {
     await Dashboard(ctx, firstName, userAccount);
@@ -92,20 +101,32 @@ bot.on("callback_query", async (ctx: any) => {
     awaitingTokenCreationInput.set(ctx.from.id, 0);
     tokenDetails.set(ctx.from.id, {});
     await CreateTokenBoard(ctx);
-  } else if (data && data.startsWith("burnToken")) {
-    // Burn token
-  } else if (data && data.startsWith("mintEnable")) {
-    awaitingEnableMintingInput.set(ctx.from.id, 0);
-    await MintEnableBoard(ctx);
-  } else if (data && data.startsWith("mintDisable")) {
-    awaitingDisableMintingInput.set(ctx.from.id, 0);
+  } else if (data && data.startsWith("mintDisable_")) {
     await MintDisableBoard(ctx);
-  } else if (data && data.startsWith("freezeAuth")) {
+  } else if (data && data.startsWith("freezeAuth_")) {
+    await FreezeAuthBoard(ctx);
   } else if (data && data.startsWith("liquidities")) {
     await ShowLPs(ctx);
   } else if (data && data.startsWith("createLiquidity")) {
     // await ShowLiquidityOptions(ctx);
-  } else if (data && data.startsWith("create")) {
+  } else if (action === "confirm") {
+    switch (actionName) {
+      case "mintDisable":
+        await MintDisableConfirmed(ctx, confirmedData);
+        break;
+      case "freezeAuth":
+        await FreezeAuthConfirmed(ctx, confirmedData);
+        break;
+      default:
+        await ctx.reply("Unknown action");
+    }
+  } else if (action === "cancel") {
+    await ctx.editMessageText("Action canceled", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("🔙 Go Back", "tokens")],
+      ]),
+    });
   }
 });
 
@@ -119,8 +140,6 @@ bot.on("message", async (ctx: any) => {
     await CreateTokenBoard(ctx);
   } else if (awaitingDisableMintingInput.has(tgId)) {
     await MintDisableBoard(ctx);
-  } else if (awaitingEnableMintingInput.has(tgId)) {
-    await MintEnableBoard(ctx);
   }
 });
 
