@@ -5,20 +5,28 @@ export const askForConfirmation = async (
   action: any,
   confirmedData: any
 ) => {
-  await ctx.replyWithHTML(
-    `Are you sure you want to proceed with this action?\n` +
-      `<i>Once you proceed, this action is not able to recovered!</i>`,
-    {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "✅ Sure",
-            `confirm_${action}_${confirmedData}`
-          ),
-          Markup.button.callback("❌ No", `cancel_${action}_${confirmedData}`),
-        ],
-      ]),
-    }
-  );
+  try {
+    await ctx.replyWithHTML(
+      `⚠️ Warning!\n\nAre you sure you want to proceed with this action?\n` +
+        `<i>Once you proceed, this action is not able to recovered!</i>`,
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "✅ Sure",
+              `confirm_${action}_${confirmedData}`
+            ),
+            Markup.button.callback(
+              "❌ No",
+              `cancel_${action}_${confirmedData}`
+            ),
+          ],
+        ]),
+      }
+    );
+  } catch (error: any) {
+    console.error(error);
+    await ctx.reply("An error occurred while processing your request.");
+  }
 };

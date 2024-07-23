@@ -1,5 +1,7 @@
 import { colTokens, colWallets } from "../../utils/mongo";
 import {
+  getTokenAmount,
+  getTokenCreatedByOwner,
   CreateToken,
   checkMintStatus,
   MintDisable,
@@ -54,11 +56,142 @@ export const TokenInfo = async (ctx: any) => {
 };
 
 export const ShowTokens = async (ctx: any) => {
-  const { tokens } = await TokenInfo(ctx);
-  if (tokens.length === 0) {
-    await ctx.editMessageText(
-      `<i>🔴 No token found!</i>\n\nPlease create a new token...\n`,
-      {
+  const tgId = ctx.from.id;
+  try {
+    const userAccount = await colWallets.findOne({ tgId: tgId.toString() });
+    if (!userAccount || !userAccount.account) {
+      throw new Error("User account not found or invalid.");
+    }
+
+    const { tokens } = await TokenInfo(ctx);
+    // const tokens = await getTokenCreatedByOwner(userAccount.account);
+    if (!tokens || tokens.length === 0) {
+      await ctx.editMessageText(
+        `<i>🔴 No token found!</i>\n\nPlease create a new token...\n`,
+        {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard([
+            [
+              Markup.button.callback("🏘 Home", "dashboard"),
+              Markup.button.callback("🌟 Create Token", "createToken"),
+            ],
+          ]),
+        }
+      );
+    } else {
+      // GET TOKENS METADATA FROM OWNER'S WALLET
+      // let tokenAmountBoard = "";
+      // for (let i = 0; i < tokens.length; i++) {
+      //   const tokenAmount = await getTokenAmount(
+      //     userAccount.account.toString(),
+      //     tokens[i].mintAddress
+      //   );
+      //   if (tokenAmount !== undefined) {
+      //     tokenAmountBoard += `💸 ${tokens[i].tokenName}    |    ${tokenAmount} ${tokens[i].symbol}\n\n`;
+      //   } else {
+      //     tokenAmountBoard += `💸 ${tokens[i].tokenName}    |    N/A ${tokens[i].symbol}\n\n`;
+      //   }
+      // }
+
+      const tokenButtons = [];
+      for (let i = 0; i < tokens.length; i += 2) {
+        const row = [];
+        row.push(
+          Markup.button.callback(`💵 ${tokens[i].tokenName}`, `token_${i}`)
+        );
+        if (i + 1 < tokens.length) {
+          row.push(
+            Markup.button.callback(
+              `💵 ${tokens[i + 1].tokenName}`,
+              `token_${i + 1}`
+            )
+          );
+        }
+        tokenButtons.push(row);
+      }
+
+      await ctx.editMessageText(
+        `Home > <b>Your Tokens:</b>\n\n\n`,
+        // `${tokenAmountBoard}`,
+        {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard([
+            ...tokenButtons,
+            [
+              Markup.button.callback("🏘 Home", "dashboard"),
+              Markup.button.callback("🌟 Create Token", "createToken"),
+            ],
+          ]),
+        }
+      );
+    }
+  } catch (error: any) {
+    console.error("Failed to show token info:", error);
+    await ctx.reply("Failed to retrieve token info. Please try again later.");
+  }
+};
+
+export const ShowTokenInfo = async (ctx: any) => {
+  const tgId = ctx.from?.id.toString();
+  try {
+    const callbackData = ctx.callbackQuery.data;
+    const tokenIndex = parseInt(callbackData.split("_")[1]);
+
+    const { tokens } = await TokenInfo(ctx);
+    const userAccount = await colWallets.findOne({ tgId: tgId });
+    if (tokens.length > tokenIndex) {
+      const token = tokens[tokenIndex];
+      const tokenAmount = await getTokenAmount(
+        userAccount.account,
+        token.tokenMintAddress
+      );
+
+      const freezeAuthStatusMark = (await checkFreezeAuthStatus(
+        token.tokenMintAddress
+      ))
+        ? "🔥 Authority is alive"
+        : "❄️ Authority is frozen";
+      const freezeAuthButton = (await checkFreezeAuthStatus(
+        token.tokenMintAddress
+      ))
+        ? Markup.button.callback(
+            "❄️ Freeze Authority",
+            `freezeAuth_${tokenIndex}`
+          )
+        : null;
+      const mintStatusMark = (await checkMintStatus(token.tokenMintAddress))
+        ? "🔵 Mint Enabled"
+        : "🔴 Mint Disabled";
+      const mintButton = (await checkMintStatus(token.tokenMintAddress))
+        ? Markup.button.callback(
+            "🔴 Disable Minting",
+            `mintDisable_${tokenIndex}`
+          )
+        : null;
+
+      await ctx.editMessageText(
+        `${freezeAuthStatusMark}    |    ${mintStatusMark}\n\n` +
+          `<b>${token.tokenName}    |    ${token.tokenSymbol}</b>\n` +
+          `<i>(${token.tokenDescription})</i>\n\n` +
+          `<b>Decimals:</b>    <code>${token.tokenDecimals}</code>\n` +
+          `<b>Total Supply:</b>    <code>${
+            token.tokenTotalSupply / Math.pow(10, token.tokenDecimals)
+          }</code> / <code>${tokenAmount}</code> <i>you have</i>\n` +
+          `<b>Mint Address:</b> <code>${token.tokenMintAddress}</code>\n\n` +
+          `Logo: ${token.tokenLogoUrl}\n`,
+        {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard([
+            [
+              ...(mintButton ? [mintButton] : []),
+              ...(freezeAuthButton ? [freezeAuthButton] : []),
+            ],
+            [Markup.button.callback("🔙 Back", "tokens")],
+          ]),
+        }
+      );
+    } else {
+      await ctx.editMessageText("Token not found.", {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
           [
@@ -66,98 +199,11 @@ export const ShowTokens = async (ctx: any) => {
             Markup.button.callback("🌟 Create Token", "createToken"),
           ],
         ]),
-      }
-    );
-  } else {
-    const tokenButtons = [];
-    for (let i = 0; i < tokens.length; i += 2) {
-      const row = [];
-      row.push(
-        Markup.button.callback(`💵 ${tokens[i].tokenName}`, `token_${i}`)
-      );
-      if (i + 1 < tokens.length) {
-        row.push(
-          Markup.button.callback(
-            `💵 ${tokens[i + 1].tokenName}`,
-            `token_${i + 1}`
-          )
-        );
-      }
-      tokenButtons.push(row);
+      });
     }
-
-    await ctx.editMessageText(`Home > <b>Your Tokens:</b>\n\n`, {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard([
-        ...tokenButtons,
-        [
-          Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Create Token", "createToken"),
-        ],
-      ]),
-    });
-  }
-};
-
-export const ShowTokenInfo = async (ctx: any) => {
-  const callbackData = ctx.callbackQuery.data;
-  const tokenIndex = parseInt(callbackData.split("_")[1]);
-
-  const { tokens } = await TokenInfo(ctx);
-
-  if (tokens.length > tokenIndex) {
-    const token = tokens[tokenIndex];
-    const mintStatusMark = (await checkMintStatus(token.tokenMintAddress))
-      ? "🔵 Minting is Enable"
-      : "🔴 Mint Disabled";
-    const mintButton = (await checkMintStatus(token.tokenMintAddress))
-      ? Markup.button.callback("🔴 Mint Disable", `mintDisable_${tokenIndex}`)
-      : null;
-    const freezeAuthStatusMark = (await checkFreezeAuthStatus(
-      token.tokenMintAddress
-    ))
-      ? "🔥 Authority is alive"
-      : "❄️ Authority is frozen";
-    const freezeAuthButton = (await checkFreezeAuthStatus(
-      token.tokenMintAddress
-    ))
-      ? Markup.button.callback(
-          "❄️ Freeze Authority",
-          `freezeAuth_${tokenIndex}`
-        )
-      : null;
-
-    await ctx.editMessageText(
-      `${mintStatusMark}    |    ${freezeAuthStatusMark}\n\n` +
-        `<b>${token.tokenName}    |    ${token.tokenSymbol}</b>\n` +
-        `<i>(${token.tokenDescription})</i>\n\n` +
-        `<b>Decimals:</b> <code>${token.tokenDecimals}</code>\n` +
-        `<b>Total Supply:</b> <code>${
-          token.tokenTotalSupply / Math.pow(10, token.tokenDecimals)
-        }</code>\n` +
-        `<b>Mint Address:</b> <code>${token.tokenMintAddress}</code>\n\n` +
-        `${token.tokenLogoUrl}\n`,
-      {
-        parse_mode: "HTML",
-        ...Markup.inlineKeyboard([
-          [
-            ...(mintButton ? [mintButton] : []),
-            ...(freezeAuthButton ? [freezeAuthButton] : []),
-          ],
-          [Markup.button.callback("🔙 Back", "tokens")],
-        ]),
-      }
-    );
-  } else {
-    await ctx.editMessageText("Token not found.", {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback("🏘 Home", "dashboard"),
-          Markup.button.callback("🌟 Create Token", "createToken"),
-        ],
-      ]),
-    });
+  } catch (error: any) {
+    console.error("Failed to show token info:", error);
+    await ctx.reply("Failed to retrieve token info. Please try again later.");
   }
 };
 
@@ -311,12 +357,12 @@ export const MintDisableConfirmed = async (
   const tgId = ctx.from.id.toString();
 
   try {
-    await ctx.reply("⌛️ Disabling minting process initiated...");
+    await ctx.editMessageText("⌛️ Disabling minting process initiated...");
     const userAccount = await colWallets.findOne({ tgId: tgId });
     const payer = userAccount.secretKey;
     const signature = await MintDisable(tokenMintAddress, payer);
 
-    await ctx.replyWithHTML(
+    await ctx.editMessageText(
       `Token minting disabled successfully for:\n` +
         `<code>${tokenMintAddress}</code>\n\n` +
         `Signature<code>${signature}</code>`,
@@ -350,12 +396,12 @@ export const FreezeAuthConfirmed = async (
   const tgId = ctx.from.id.toString();
 
   try {
-    await ctx.reply("⌛️ Freezing authority process initiated...");
+    await ctx.editMessageText("⌛️ Freezing authority process initiated...");
     const userAccount = await colWallets.findOne({ tgId: tgId });
     const payer = userAccount.secretKey;
     const signature = await FreezeAuthority(tokenMintAddress, payer);
 
-    await ctx.replyWithHTML(
+    await ctx.editMessageText(
       `Authority freezed successfully for:\n` +
         `<code>${tokenMintAddress}</code>\n\n` +
         `Signature<code>${signature}</code>`,

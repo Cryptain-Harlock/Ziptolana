@@ -2,7 +2,8 @@ import { Markup } from "telegraf";
 
 const Dashboard = async (ctx: any, firstName: string, userAccount: string) => {
   await ctx.editMessageText(
-    `Hi, <b>${firstName}</b>. Welcome to Ziptos on Solana!\n\nYour Solana Account:\n<code>${userAccount}</code>\n\n`,
+    `👋 Hi, <b>${firstName}</b>\n` +
+      `Welcome to Ziptos on Solana!\n\nYour Solana Account:\n<code>${userAccount}</code>\n\n`,
     {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([

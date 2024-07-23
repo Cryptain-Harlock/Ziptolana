@@ -1,9 +1,9 @@
-import { colWallets } from "../../utils/mongo";
-import { Markup } from "telegraf";
-import { getWalletBalance } from "../../utils/solana";
 import * as web3 from "@solana/web3.js";
+import { Markup } from "telegraf";
+import { colWallets } from "../../utils/mongo";
+import { getWalletBalance } from "../../utils/solana";
 
-export const WalletInfo = async (ctx: any) => {
+const WalletInfo = async (ctx: any) => {
   const tgId = ctx.from?.id.toString();
   const account = await colWallets.findOne({ tgId });
 
@@ -32,7 +32,9 @@ export const ShowWalletInfo = async (ctx: any) => {
   }
 
   await ctx.editMessageText(
-    `Home > <b>Wallet Information</b>\n\nAddress:    |    <i>${balance}</i>  SOL\n<code>${account}</code>\n`,
+    `Home > <b>Wallet Information</b>\n\n` +
+      `Address:    |    <i>${balance}</i>  SOL\n<code>${account}</code>\n\n` +
+      ``,
     {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([

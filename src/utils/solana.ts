@@ -3,6 +3,7 @@ import * as splToken from "@solana/spl-token";
 import * as helpers from "@solana-developers/helpers";
 import * as meta from "@metaplex-foundation/mpl-token-metadata";
 import * as raydium from "@raydium-io/raydium-sdk";
+import { BN } from "bn.js";
 import { colWallets, colTokens, colLiquidities } from "./mongo";
 import { resizeImageAndStoreInPinata } from "./upload";
 
@@ -55,6 +56,41 @@ export const getWalletBalance = async (
   } catch (error) {
     console.error("Error in getWalletBalance:", error);
     throw new Error("Failed to get wallet balance");
+  }
+};
+
+export const getTokenCreatedByOwner = async (walletAddress: string) => {
+  try {
+    const walletPublicKey = new web3.PublicKey(walletAddress);
+    const tokenAccounts = await connection.getTokenAccountsByOwner(
+      walletPublicKey,
+      { programId: splToken.TOKEN_PROGRAM_ID }
+    );
+
+    const tokenInfoPromises = tokenAccounts.value.map(async (accountInfo) => {
+      const accountData = await splToken.getAccount(
+        connection,
+        accountInfo.pubkey
+      );
+      const mintAddress = accountData.mint;
+      const mintData = await splToken.getMint(connection, mintAddress);
+
+      return {
+        tokenAccount: accountInfo.pubkey.toBase58(),
+        mintAddress: mintAddress.toBase58(),
+        amount: accountData.amount.toString(),
+        decimals: mintData.decimals,
+        supply: mintData.supply.toString(),
+        isInitialized: mintData.isInitialized,
+        freezeAuthority: mintData.freezeAuthority?.toBase58(),
+        mintAuthority: mintData.mintAuthority?.toBase58(),
+      };
+    });
+
+    return Promise.all(tokenInfoPromises);
+  } catch (error) {
+    console.error("Failed to get tokens created by wallet:", error);
+    throw new Error("Failed to get tokens created by wallet");
   }
 };
 
@@ -212,6 +248,45 @@ export const CreateToken = async (
   }
 };
 
+export const getTokenAmount = async (
+  userAccount: string,
+  mintAddress: string
+) => {
+  try {
+    const userWallet = new web3.PublicKey(userAccount);
+    const tokenMint = new web3.PublicKey(mintAddress);
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      userWallet,
+      { mint: tokenMint }
+    );
+
+    if (tokenAccounts.value.length === 0) {
+      console.log("No token account found for this wallet");
+      return;
+    }
+
+    const tokenAccount = tokenAccounts.value[0];
+    if (
+      !tokenAccount ||
+      !tokenAccount.account ||
+      !tokenAccount.account.data ||
+      !tokenAccount.account.data.parsed ||
+      !tokenAccount.account.data.parsed.info ||
+      !tokenAccount.account.data.parsed.info.tokenAmount
+    ) {
+      throw new Error("Invalid token account data");
+    }
+
+    const tokenAmount =
+      tokenAccount.account.data.parsed.info.tokenAmount.uiAmount;
+    return tokenAmount;
+  } catch (error) {
+    console.error("Failed to get token amount:", error);
+    throw new Error("Failed to get token amount");
+  }
+};
+
 export const checkMintStatus = async (mintAddress: string) => {
   try {
     const mint = new web3.PublicKey(mintAddress);
@@ -235,9 +310,9 @@ export const checkFreezeAuthStatus = async (mintAddress: string) => {
 };
 
 export const MintDisable = async (mintAddress: string, payerSecretKey: any) => {
-  const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
   try {
     const mint = new web3.PublicKey(mintAddress);
+    const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
     const transaction = new web3.Transaction();
     const mintInfo = await splToken.getMint(connection, mint);
 
@@ -313,60 +388,130 @@ export const FreezeAuthority = async (
   }
 };
 
-const SOL_MINT_ADDRESS = new web3.PublicKey(splToken.NATIVE_MINT);
-/*
-const CreateAndAddLP = async (mintAddress: string, payerSecretKey: any) => {
-  const payer = web3.Keypair.fromSecretKey(Uint8Array.from(payerSecretKey));
+async function getWalletTokenAccount(
+  connection: web3.Connection,
+  wallet: web3.PublicKey
+): Promise<raydium.TokenAccount[]> {
+  const walletTokenAccount = await connection.getTokenAccountsByOwner(wallet, {
+    programId: raydium.TOKEN_PROGRAM_ID,
+  });
+  return walletTokenAccount.value.map((i) => ({
+    pubkey: i.pubkey,
+    programId: i.account.owner,
+    accountInfo: raydium.SPL_ACCOUNT_LAYOUT.decode(i.account.data),
+  }));
+}
+
+export const CreateAndAddLP = async (
+  tgId: string,
+  mintAddress: string,
+  quoteAmount: number,
+  solAmount: number
+) => {
   try {
-    const solTokenAccount = await splToken.getAssociatedTokenAddress(
-      splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-      splToken.TOKEN_PROGRAM_ID,
-      SOL_MINT_ADDRESS,
-      payer
-    );
-    const userTokenAccount = await splToken.getAssociatedTokenAddress(
-      splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-      splToken.TOKEN_PROGRAM_ID,
-      mintAddress,
-      payer
+    const userAccount = await colWallets.findOne({ tgId: tgId });
+    const feePayer = web3.Keypair.fromSecretKey(
+      new Uint8Array(userAccount.secretKey)
     );
 
+    const SOL_MINT_ADDRESS = splToken.NATIVE_MINT;
+    const QUOTE_MINT_ADDRESS = new web3.PublicKey(mintAddress);
+    const PROGRAMIDS = raydium.DEVNET_PROGRAM_ID;
+
+    const solDecimals = (await splToken.getMint(connection, SOL_MINT_ADDRESS))
+      .decimals;
+    const quoteDecimals = (
+      await splToken.getMint(connection, QUOTE_MINT_ADDRESS)
+    ).decimals;
+
+    const walletTokenAccounts = await getWalletTokenAccount(
+      connection,
+      feePayer.publicKey
+    );
+
+    const associatedTokenAccount = await splToken.getAssociatedTokenAddress(
+      splToken.NATIVE_MINT,
+      feePayer.publicKey
+    );
+
+    // Create token account to hold your wrapped SOL
+    let tx = new web3.Transaction().add(
+      // Transfer SOL
+      web3.SystemProgram.transfer({
+        fromPubkey: feePayer.publicKey,
+        toPubkey: associatedTokenAccount,
+        lamports: solAmount * web3.LAMPORTS_PER_SOL,
+      }),
+      // Sync wrapped SOL balance
+      splToken.createSyncNativeInstruction(associatedTokenAccount)
+    );
+
+    await web3.sendAndConfirmTransaction(connection, tx, [feePayer]);
+
+    // Construct the liquidity transaction
+    const { innerTransactions } =
+      await raydium.Liquidity.makeCreatePoolV4InstructionV2Simple({
+        connection,
+        programId: PROGRAMIDS.AmmV4,
+        marketInfo: {
+          marketId: await web3.Keypair.generate().publicKey,
+          programId: new web3.PublicKey(PROGRAMIDS.OPENBOOK_MARKET),
+        },
+        baseMintInfo: { mint: associatedTokenAccount, decimals: solDecimals },
+        quoteMintInfo: { mint: QUOTE_MINT_ADDRESS, decimals: quoteDecimals },
+        baseAmount: new BN(solAmount * web3.LAMPORTS_PER_SOL),
+        quoteAmount: new BN(quoteAmount),
+        startTime: new BN(Math.floor(Date.now() / 1000) + 30),
+        ownerInfo: {
+          feePayer: feePayer.publicKey,
+          wallet: feePayer.publicKey,
+          tokenAccounts: walletTokenAccounts,
+        },
+        associatedOnly: false,
+        checkCreateATAOwner: true,
+        makeTxVersion: raydium.TxVersion.V0,
+        feeDestinationId: new web3.PublicKey(
+          "8owZuag8Fbg4imbERYjc7yN4cUU8BTzFo4yHqxaoWZHc"
+        ),
+      });
+
+    // Create a new transaction and add the inner transaction instructions
     const transaction = new web3.Transaction();
-    transaction.add(
-      splToken.createAssociatedTokenAccountInstruction(
-        splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-        splToken.TOKEN_PROGRAM_ID,
-        SOL_MINT_ADDRESS,
-        solTokenAccount,
-        payer.publicKey,
-        payer.publicKey
-      ),
-      splToken.createAssociatedTokenAccountInstruction(
-        splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-        splToken.TOKEN_PROGRAM_ID,
-        SOL_MINT_ADDRESS,
-        solTokenAccount,
-        payer.publicKey,
-        payer.publicKey
-      )
-    );
-    const poolInstruction = raydium.createPoolInstruction(
-      payer.publicKey,
-      solTokenAccount,
-      userTokenAccount,
-      mintAddress,
-      SOL_MINT_ADDRESS
-    );
-    transaction.add(poolInstruction);
-
-    const signature = await connection.sendTransaction(transaction, [payer], {
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
+    innerTransactions.forEach((innerTx: any) => {
+      innerTx.instructions.forEach((instruction: any) => {
+        transaction.add(instruction);
+      });
     });
-    await connection.confirmTransaction(signature, "confirmed");
-    console.log(`Liquidity pool created. Transaction signature: ${signature}`);
+
+    transaction.recentBlockhash = (
+      await connection.getRecentBlockhash()
+    ).blockhash;
+    transaction.feePayer = feePayer.publicKey;
+
+    // Sign and send the transaction
+    const transactionSignature = await web3.sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [feePayer] // Ensure this is a valid Keypair
+    );
+
+    // Generate explorer links for the transaction and the liquidity pool
+    const transactionLink = helpers.getExplorerLink(
+      "transaction",
+      transactionSignature,
+      "devnet"
+    );
+
+    console.log(
+      `✅ Transaction confirmed, explorer link is: ${transactionLink}!`
+    );
+
+    const liquidityLink = helpers.getExplorerLink("address", "devnet");
+
+    console.log(`✅ Look at the liquidity again: ${liquidityLink}!`);
+    return { liquidityLink, transactionLink };
   } catch (error: any) {
-    console.log("Faild to create liquidity pool", error);
+    console.error("Failed to create and add LP:", error);
+    throw new Error("Failed to create and add LP");
   }
 };
-*/
